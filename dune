@@ -1,0 +1,11 @@
+(library
+ (name bonsai_test)
+ (public_name bonsai_test)
+ (libraries bonsai bonsai.driver bonsai.perf_shared
+   patdiff.expect_test_patdiff core expectable expect_test_helpers_core
+   async_js.test_handle_garbage_collector core_kernel.composition_infix
+   ppx_expect.config_types expect_test_helpers_core.expect_test_helpers_base
+   patdiff.kernel virtual_dom.ui_effect incr_dom.ui_incr incremental
+   incremental.skeleton)
+ (preprocess
+  (pps ppx_jane ppx_pattern_bind bonsai.ppx_bonsai)))
