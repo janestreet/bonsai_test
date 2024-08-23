@@ -96,7 +96,7 @@ module Handle : sig
   val advance_clock : to_:Time_ns.t -> _ t -> unit
 
   val create
-    :  ?here:Stdlib.Lexing.position
+    :  here:[%call_pos]
     -> ?start_time:Time_ns.t
     -> ?optimize:bool
     -> ('result, 'incoming) Result_spec.t

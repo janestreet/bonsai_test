@@ -30,16 +30,16 @@ end
 module For_cont : sig
   module Bonsai := Bonsai_cont
 
-  val basic : height:int -> width:int -> Bonsai.graph -> Core.String.Set.t Bonsai.t
+  val basic : height:int -> width:int -> local_ Bonsai.graph -> Core.String.Set.t Bonsai.t
 
   val with_assoc
     :  height:int
     -> width:int
     -> num_assocs:int
-    -> Bonsai.graph
+    -> local_ Bonsai.graph
     -> Core.String.Set.t Core.String.Map.t Bonsai.t
 
-  val with_switch : height:int -> width:int -> Bonsai.graph -> int Bonsai.t
+  val with_switch : height:int -> width:int -> local_ Bonsai.graph -> int Bonsai.t
 end
 
 val lengths_result_spec

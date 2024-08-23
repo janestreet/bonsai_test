@@ -5,16 +5,16 @@ open Bonsai.Let_syntax
 
 let run_effect_on_change_and_remind_every_span_if_true
   :  span:Time_ns.Span.t -> condition:bool Bonsai.t -> unit Ui_effect.t Bonsai.t
-  -> Bonsai.graph -> unit Bonsai.t
+  -> local_ Bonsai.graph -> unit Bonsai.t
   =
-  fun ~span ~condition effect graph ->
+  fun ~span ~condition effect (local_ graph) ->
   let () =
     Bonsai.Edge.on_change'
       ~equal:[%equal: bool]
       condition
       graph
       ~callback:
-        (let%arr effect = effect in
+        (let%arr effect in
          fun prev curr ->
            let should_run =
              match prev, curr with
@@ -30,7 +30,7 @@ let run_effect_on_change_and_remind_every_span_if_true
   | true ->
     let (_ : unit Bonsai.t), reset =
       Bonsai.with_model_resetter
-        ~f:(fun graph ->
+        ~f:(fun (local_ graph) ->
           let () =
             Bonsai.Clock.every
               ~trigger_on_activate:false
@@ -51,7 +51,7 @@ let create_handle ~default =
   let handle =
     Handle.create
       (Result_spec.sexp (module Unit))
-      (fun graph ->
+      (fun (local_ graph) ->
         run_effect_on_change_and_remind_every_span_if_true
           ~span:(Time_ns.Span.of_min 10.0)
           ~condition:(Bonsai.Expert.Var.value var)

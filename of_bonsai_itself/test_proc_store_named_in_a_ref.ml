@@ -14,7 +14,7 @@ let%expect_test "store named in a ref" =
     | false ->
       let%sub a, _ = Bonsai.state 5 in
       name_ref := Some a;
-      let%arr a = a
+      let%arr a
       and branch = Bonsai.Var.value branch in
       sprintf "%d %b" a branch
     | true ->

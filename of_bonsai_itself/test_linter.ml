@@ -119,7 +119,7 @@ let%expect_test "map2_with_unfolded_constants_and_sm1_with_const_input_both_warn
         ~apply_action:(fun (_ : _ Bonsai.Apply_action_context.t) _ _ _ -> 3)
         (Value.return 5)
     in
-    let%arr value = value
+    let%arr value
     and sum =
       let%map a = Value.return 5
       and b = Value.return 3 in

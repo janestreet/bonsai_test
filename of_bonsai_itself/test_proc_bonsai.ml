@@ -140,8 +140,7 @@ let%expect_test "Cutoff propragates on named values regression" =
       let%arr _, right = tupled_input in
       right
     in
-    let%arr left = left
-    and right = right in
+    let%arr left and right in
     left, right
   in
   let handle =
@@ -272,8 +271,7 @@ let%expect_test "arrow-syntax" =
   let component =
     let%sub a = Bonsai.const "hi" in
     let%sub b = Bonsai.const 5 in
-    let%arr a = a
-    and b = b in
+    let%arr a and b in
     sprintf "%s %d" a b
   in
   let handle = Handle.create (Result_spec.string (module String)) component in
@@ -331,8 +329,7 @@ let%expect_test "on_display" =
       Bonsai.state 0 ~sexp_of_model:[%sexp_of: Int.t] ~equal:[%equal: Int.t]
     in
     let update =
-      let%map state = state
-      and set_state = set_state in
+      let%map state and set_state in
       set_state (state + 1)
     in
     let%sub () = Bonsai.Edge.after_display update in
@@ -359,15 +356,12 @@ let%expect_test "on_display for updating a state" =
       | None ->
         return
         @@
-        let%map set_state = set_state
-        and input = input in
+        let%map set_state and input in
         Some (set_state (Some input))
       | Some state ->
         return
         @@
-        let%map state = state
-        and set_state = set_state
-        and input = input in
+        let%map state and set_state and input in
         if Int.equal state input then None else Some (set_state (Some input))
     in
     let%sub () = Bonsai.Edge.after_display' update in
@@ -417,8 +411,8 @@ let%expect_test "assoc and enum path" =
       (opaque_const_value (Int.Map.of_alist_exn [ -1, (); 1, () ]))
       ~f:(fun i _ ->
         if%sub i >>| ( > ) 0
-        then fun graph -> Bonsai.Private.path graph
-        else fun graph -> Bonsai.Private.path graph)
+        then fun (local_ graph) -> Bonsai.Private.path graph
+        else fun (local_ graph) -> Bonsai.Private.path graph)
   in
   let handle =
     Handle.create
@@ -448,8 +442,7 @@ let%expect_test "constant folded assoc path" =
         in
         let%sub path = Bonsai.Private.path in
         let%sub path, _ =
-          let%arr path = path
-          and x = x in
+          let%arr path and x in
           path, x
         in
         Bonsai.read path)
@@ -476,7 +469,7 @@ let%expect_test "constant folded assoc lifecycles are unchanged" =
           ~f:(fun key _ ->
             Bonsai.Edge.lifecycle
               ~on_activate:
-                (let%map key = key in
+                (let%map key in
                  Effect.print_s [%message (key : int)])
               ())
       in
@@ -499,7 +492,7 @@ let%expect_test "constant map + simplifiable assoc ~f => constant map proper eva
       (module String)
       (Value.return (String.Map.of_alist_exn [ "hello", 0; "world", 5 ]))
       ~f:(fun _ v ->
-        let%arr v = v in
+        let%arr v in
         v + 100)
   in
   let module Model = struct
@@ -747,8 +740,7 @@ let%test_module "narrow" =
         let component =
           let%sub state = Bonsai.state { a = 1; b = "hello" } in
           let%sub narrowed = narrow state in
-          let%arr state = state
-          and narrowed = narrowed in
+          let%arr state and narrowed in
           state, narrowed
         in
         let handle =
@@ -805,8 +797,7 @@ let%expect_test "wrap" =
       ~f:(fun model inject ->
         return
         @@
-        let%map model = model
-        and inject = inject in
+        let%map model and inject in
         Int.to_string model, inject)
   in
   let handle =
@@ -877,11 +868,11 @@ let%expect_test "match%sub repro" =
     match%sub current_page with
     | Loading x ->
       Bonsai.read
-        (let%map x = x in
+        (let%map x in
          "loading " ^ x)
     | Search_results s ->
       Bonsai.read
-        (let%map s = s in
+        (let%map s in
          sprintf "search results %d" s)
   in
   let var = Bonsai.Var.create (Loading "hello") in
@@ -939,8 +930,7 @@ let%expect_test "sub constant folding optimization" =
     let%sub a = Bonsai.const 5 in
     let%sub b = Bonsai.const 6 in
     return
-      (let%map a = a
-       and b = b in
+      (let%map a and b in
        a + b)
   in
   print_s
@@ -969,8 +959,7 @@ let%expect_test "let%map constant folding optimization" =
     in
     let%sub b = Bonsai.const 6 in
     return
-      (let%map a = a
-       and b = b in
+      (let%map a and b in
        a + b)
   in
   print_s
@@ -1060,16 +1049,14 @@ let%expect_test "map > lazy" =
         children
         ~f:(fun _ v ->
           let depth =
-            let%map depth = depth in
+            let%map depth in
             depth + 1
           in
           (Bonsai.lazy_ [@alert "-deprecated"]) (lazy (f ~t:v ~depth)))
     in
     return
     @@
-    let%map label = label
-    and children = children
-    and depth = depth in
+    let%map label and children and depth in
     [%message label (depth : int) (children : Sexp.t Int.Map.t)]
   in
   let t_var = Bonsai.Var.create { M.label = "hi"; children = Int.Map.empty } in
@@ -1109,16 +1096,14 @@ let%expect_test "map > fix2" =
           children
           ~f:(fun _ v ->
             let depth =
-              let%map depth = depth in
+              let%map depth in
               depth + 1
             in
             recurse v depth)
       in
       return
       @@
-      let%map label = label
-      and children = children
-      and depth = depth in
+      let%map label and children and depth in
       [%message label (depth : int) (children : Sexp.t Int.Map.t)])
   in
   let t_var = Bonsai.Var.create { M.label = "hi"; children = Int.Map.empty } in
@@ -1145,20 +1130,19 @@ let%expect_test "Using fix to implement mutual recursion (collatz)" =
   let step ~f state even odd =
     let%sub n, depth = return state in
     let%sub n =
-      let%arr n = n in
+      let%arr n in
       f n
     in
     let%sub is_even =
-      let%arr n = n in
+      let%arr n in
       n % 2 = 0
     in
     let%sub depth =
-      let%arr depth = depth in
+      let%arr depth in
       depth + 1
     in
     let%sub state =
-      let%arr n = n
-      and depth = depth in
+      let%arr n and depth in
       n, depth
     in
     if%sub is_even then even state else odd state
@@ -1181,7 +1165,7 @@ let%expect_test "Using fix to implement mutual recursion (collatz)" =
   let even = even odd in
   let collatz n =
     let%sub state =
-      let%arr n = n in
+      let%arr n in
       n, -1
     in
     step ~f:(fun x -> x) state even odd
@@ -2187,7 +2171,7 @@ let%test_module "inactive delivery" =
                       print_endline "resetting";
                       999))
             in
-            let%arr map = map in
+            let%arr map in
             let res = Map.to_alist map |> List.map ~f:(fun (k, (v, _)) -> k, v) in
             let setter (i, v) = (Map.find_exn map i |> Tuple2.get2) v in
             res, setter
@@ -2345,7 +2329,7 @@ let%test_module "inactive delivery" =
                       print_endline "resetting";
                       999))
             in
-            let%arr map = map in
+            let%arr map in
             let res = Map.to_alist map |> List.map ~f:(fun (k, (v, _)) -> k, v) in
             let setter (i, v) = (Map.find_exn map i |> Tuple2.get2) v in
             res, setter
@@ -2690,7 +2674,7 @@ let%expect_test "constant_folding on assoc containing a lifecycle that depends o
           Bonsai.Edge.lifecycle
             ()
             ~on_activate:
-              (let%map a = a in
+              (let%map a in
                Ui_effect.print_s [%message a])
         in
         return data)
@@ -2840,7 +2824,7 @@ let%expect_test "actor" =
     in
     return
     @@
-    let%map effect = effect in
+    let%map effect in
     let%bind.Bonsai.Effect i = effect () in
     print_int_effect i
   in
@@ -2884,7 +2868,7 @@ let%expect_test "actor sending events to itself" =
               Effect.print_s [%message (result : int)]));
         (), i * 2)
     in
-    let%arr effect = effect in
+    let%arr effect in
     fun x -> Effect.ignore_m (effect x)
   in
   let handle =
@@ -3842,7 +3826,7 @@ let%test_module "Clock.every" =
                       ~when_to_start_next_effect
                       ~trigger_on_activate:false
                       (Time_ns.Span.of_sec 3.0)
-                      (let%map set_state = set_state in
+                      (let%map set_state in
                        let%bind.Effect () =
                          (Effect.of_sync_fun (fun () ->
                             print_endline "[tick tock] - (state := false)"))
@@ -3855,7 +3839,7 @@ let%test_module "Clock.every" =
                 | false ->
                   let%sub () =
                     Bonsai.Edge.after_display
-                      (let%map set_state = set_state in
+                      (let%map set_state in
                        let%bind.Effect () =
                          (Effect.of_sync_fun (fun () -> print_endline "(state := true)"))
                            ()
@@ -4328,7 +4312,7 @@ let%test_module "Clock.every" =
             ~when_to_start_next_effect:`Every_multiple_of_period_non_blocking
             ~trigger_on_activate:true
             (Time_ns.Span.of_sec 3.0)
-            (let%map inject = inject in
+            (let%map inject in
              inject ())
         | false -> Bonsai.const ()
       in
@@ -4357,7 +4341,7 @@ let%expect_test "wait_after_display" =
   let component =
     let effect name =
       let%sub wait_after_display = Bonsai.Edge.wait_after_display () in
-      let%arr wait_after_display = wait_after_display in
+      let%arr wait_after_display in
       let%bind.Effect () = wait_after_display in
       Effect.print_s [%message "after display" (name : string)]
     in
@@ -4442,7 +4426,7 @@ let%expect_test "wait_after_display" =
 let%expect_test "wait_after_display twice in a row" =
   let component =
     let%sub wait_after_display = Bonsai.Edge.wait_after_display () in
-    let%arr wait_after_display = wait_after_display in
+    let%arr wait_after_display in
     let%bind.Effect () = wait_after_display in
     let%bind.Effect () = wait_after_display in
     Effect.print_s [%message "after display"]
@@ -4474,7 +4458,7 @@ let%expect_test "wait_after_display twice in a row" =
 let%expect_test "wait_after_display works with [recompute_view_until_stable]" =
   let component =
     let%sub wait_after_display = Bonsai.Edge.wait_after_display () in
-    let%arr wait_after_display = wait_after_display in
+    let%arr wait_after_display in
     let%bind.Effect () = wait_after_display in
     let%bind.Effect () = wait_after_display in
     let%bind.Effect () = wait_after_display in
@@ -4506,7 +4490,7 @@ let%expect_test "wait_after_display works with [recompute_view_until_stable]" =
 let%expect_test "sleep" =
   let component =
     let%sub sleep = Bonsai.Clock.sleep () in
-    let%arr sleep = sleep in
+    let%arr sleep in
     fun seconds ->
       let%bind.Effect () = sleep (Time_ns.Span.of_sec seconds) in
       Effect.print_s [%message "after sleep" (seconds : float)]
@@ -4589,7 +4573,7 @@ let%expect_test "sleep" =
 let%expect_test "sleep twice in a row" =
   let component =
     let%sub sleep = Bonsai.Clock.sleep () in
-    let%arr sleep = sleep in
+    let%arr sleep in
     let%bind.Effect () = sleep Time_ns.Span.zero in
     let%bind.Effect () = sleep Time_ns.Span.zero in
     Effect.print_s [%message "slept"]
@@ -4619,7 +4603,7 @@ let%expect_test "sleep twice in a row" =
 let%expect_test "recompute_view_until_stable does not notice sleep effects" =
   let component =
     let%sub sleep = Bonsai.Clock.sleep () in
-    let%arr sleep = sleep in
+    let%arr sleep in
     let%bind.Effect () = sleep Time_ns.Span.zero in
     let%bind.Effect () = sleep Time_ns.Span.zero in
     let%bind.Effect () = sleep Time_ns.Span.zero in
@@ -4666,7 +4650,7 @@ let%expect_test "sleep works even when switching between inactive and active" =
     match%sub Bonsai.Var.value active_var with
     | true ->
       let%sub sleep = Bonsai.Clock.sleep () in
-      let%arr sleep = sleep in
+      let%arr sleep in
       fun seconds ->
         let%bind.Effect () = sleep (Time_ns.Span.of_sec seconds) in
         Effect.print_s [%message "after sleep" (seconds : float)]
@@ -4839,7 +4823,7 @@ let%expect_test "Clock.now" =
   let component =
     let%sub get_time = Bonsai.Clock.get_current_time () in
     Bonsai.Edge.after_display
-      (let%map get_time = get_time in
+      (let%map get_time in
        let%bind.Effect now = get_time in
        Effect.print_s [%sexp (now : Time_ns.Alternate_sexp.t)])
   in
@@ -4940,7 +4924,7 @@ let%expect_test "infinite chain!" =
       Bonsai.state 0 ~sexp_of_model:[%sexp_of: Int.t] ~equal:[%equal: Int.t]
     in
     let callback =
-      let%map set_state = set_state in
+      let%map set_state in
       fun new_state -> set_state (new_state + 1)
     in
     let%sub () =
@@ -5209,8 +5193,7 @@ let%expect_test "yoink" =
     in
     let%sub get_state = Bonsai.yoink state in
     Bonsai_extra.exactly_once
-      (let%map get_state = get_state
-       and set_state = set_state in
+      (let%map get_state and set_state in
        let%bind.Bonsai.Effect () = set_state 1 in
        let%bind.Bonsai.Effect s =
          match%bind.Effect get_state with
@@ -5239,8 +5222,7 @@ let%expect_test "bonk" =
         ()
     in
     let%sub bonk = Bonsai_extra.bonk in
-    let%arr inject_message = inject_message
-    and bonk = bonk in
+    let%arr inject_message and bonk in
     ( inject_message "immediate"
     , bonk (inject_message "bonked")
     , bonk (bonk (inject_message "double bonked")) )
@@ -5306,10 +5288,7 @@ let%expect_test "bonk sorts a list" =
            ())
     in
     let%sub bonk = Bonsai_extra.bonk in
-    let%arr inject_item = inject_item
-    and bonk = bonk
-    and reset = reset
-    and items = items in
+    let%arr inject_item and bonk and reset and items in
     ( items
     , fun l ->
         let%bind.Effect () = reset in
@@ -5405,7 +5384,7 @@ let%expect_test "id_gen" =
   let component =
     let%sub next = Id.component in
     Bonsai.Edge.after_display
-      (let%map next = next in
+      (let%map next in
        let%bind.Bonsai.Effect id = next in
        Ui_effect.print_s [%sexp (id : Id.t)])
   in
@@ -5448,7 +5427,7 @@ let%expect_test "with_self_effect" =
           Bonsai.state 0 ~sexp_of_model:[%sexp_of: Int.t] ~equal:[%equal: Int.t]
         in
         let%arr number, set_number = state
-        and input = input in
+        and input in
         let effect action =
           match action with
           | Result_spec.Print ->
@@ -5932,7 +5911,7 @@ let%expect_test "thunk-storage" =
   let component =
     if%sub Bonsai.Var.value var
     then (
-      let%map.Computation id = id in
+      let%map.Computation id in
       Id.to_string id)
     else Bonsai.const ""
   in
@@ -5972,8 +5951,7 @@ let%expect_test "action dropped in match%sub" =
       in
       Bonsai.Edge.lifecycle
         ~on_activate:
-          (let%map inject = inject
-           and set_x = set_x in
+          (let%map inject and set_x in
            let%bind.Effect () = set_x false in
            (* This call to [inject] below successfully schedules the effect,
               but the effect never gets run because the effect that
@@ -6400,8 +6378,7 @@ let%test_module "regression" =
       let state = Bonsai.Var.value state_var in
       let a = Value.map state ~f:State.a in
       let component b =
-        let%arr a = a
-        and b = b in
+        let%arr a and b in
         printf "Recomputing ; a = %d\n" a;
         a + b
       in
@@ -6423,8 +6400,7 @@ let%test_module "regression" =
       let state = Bonsai.Var.value state_var in
       let a = Value.map state ~f:State.a in
       let component b =
-        let%arr a = a
-        and b = b in
+        let%arr a and b in
         printf "Recomputing ; a = %d\n" a;
         a + b
       in
@@ -6668,7 +6644,7 @@ let%expect_test "on_activate lifecycle events are run the second frame after the
         (Bonsai.Var.value input_var)
     in
     let%sub on_activate =
-      let%arr inject = inject in
+      let%arr inject in
       inject ()
     in
     Bonsai.Edge.lifecycle ~on_activate ()
@@ -6851,8 +6827,7 @@ let%expect_test "Bonsai_extra.chain_incr_effects" =
   let effect_many =
     let%sub state, set_state = Bonsai.state 0 in
     let%sub on_activate =
-      let%arr state = state
-      and set_state = set_state in
+      let%arr state and set_state in
       Effect.Many [ set_state (state + 1); set_state (state + 1); set_state (state + 1) ]
     in
     let%sub () = Bonsai.Edge.lifecycle ~on_activate () in
@@ -6862,8 +6837,7 @@ let%expect_test "Bonsai_extra.chain_incr_effects" =
     let%sub state, set_state = Bonsai.state 0 in
     let%sub scheduler = Bonsai_extra.chain_incr_effects state in
     let%sub on_activate =
-      let%arr scheduler = scheduler
-      and set_state = set_state in
+      let%arr scheduler and set_state in
       scheduler
         [ (fun s -> set_state (s + 1))
         ; (fun s -> set_state (s + 1))
@@ -6898,9 +6872,7 @@ let%expect_test "match%sub implicit tuples" =
     let%sub c, _ = Bonsai.state false in
     match%sub a, b, c with
     | a, b, false ->
-      let%arr a = a
-      and b = b
-      and c = c in
+      let%arr a and b and c in
       a, b, c
     | tuple -> return tuple
   in
@@ -6976,23 +6948,23 @@ let%test_module "computational shape" =
         let%sub o = Bonsai.path_id () in
         let%sub p = Bonsai.path_id () in
         let%sub q = Bonsai.path_id () in
-        let%arr a = a
-        and b = b
-        and c = c
-        and d = d
-        and e = e
-        and f = f
-        and g = g
-        and h = h
-        and i = i
-        and j = j
-        and k = k
-        and l = l
-        and m = m
-        and n = n
-        and o = o
-        and p = p
-        and q = q in
+        let%arr a
+        and b
+        and c
+        and d
+        and e
+        and f
+        and g
+        and h
+        and i
+        and j
+        and k
+        and l
+        and m
+        and n
+        and o
+        and p
+        and q in
         [ a; b; c; d; e; f; g; h; i; j; k; l; m; n; o; p; q ]
       in
       let handle =

@@ -5,7 +5,7 @@ module Bonsai = Bonsai.Cont
 
 let seconds n = Time_ns.of_span_since_epoch (Time_ns.Span.of_sec (Int.to_float n))
 
-let tick_every_second graph =
+let tick_every_second (local_ graph) =
   let () =
     Bonsai.Clock.every
       ~when_to_start_next_effect:`Every_multiple_of_period_blocking
@@ -102,7 +102,9 @@ let%expect_test "every - Advancing the clock like normal and then going back in 
   [%expect {| |}]
 ;;
 
-let before_or_after_a_second graph = Bonsai.Clock.at (Bonsai.return (seconds 1)) graph
+let before_or_after_a_second (local_ graph) =
+  Bonsai.Clock.at (Bonsai.return (seconds 1)) graph
+;;
 
 let%expect_test "before or after is weird" =
   let handle =
@@ -129,7 +131,8 @@ let%expect_test "Approx now - kind of weird" =
   let handle =
     Handle.create
       (Result_spec.sexp (module Time_ns.Alternate_sexp))
-      (fun graph -> Bonsai.Clock.approx_now ~tick_every:(Time_ns.Span.of_sec 1.0) graph)
+      (fun (local_ graph) ->
+        Bonsai.Clock.approx_now ~tick_every:(Time_ns.Span.of_sec 1.0) graph)
   in
   let go n =
     Handle.advance_clock handle ~to_:(seconds n);
@@ -165,7 +168,7 @@ let%expect_test "now - kind of weird" =
   let handle =
     Handle.create
       (Result_spec.sexp (module Time_ns.Alternate_sexp))
-      (fun graph -> Bonsai.Clock.now graph)
+      (fun (local_ graph) -> Bonsai.Clock.now graph)
   in
   let go n =
     Handle.advance_clock handle ~to_:(seconds n);
@@ -209,10 +212,10 @@ let%expect_test "get_current_time - behaves correctly" =
   let handle =
     Handle.create
       (module Spec)
-      (fun graph ->
+      (fun (local_ graph) ->
         let get_current_time = Bonsai.Clock.get_current_time graph in
         let open Bonsai.Let_syntax in
-        let%arr get_current_time = get_current_time in
+        let%arr get_current_time in
         let%bind.Ui_effect current_time = get_current_time in
         Ui_effect.print_s [%message (current_time : Time_ns.Alternate_sexp.t)])
   in

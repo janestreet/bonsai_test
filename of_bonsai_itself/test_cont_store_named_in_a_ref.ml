@@ -8,12 +8,12 @@ open Bonsai.Let_syntax
 let%expect_test "store named in a ref" =
   let branch = Bonsai.Proc.Var.create false in
   let name_ref = ref None in
-  let component graph =
+  let component (local_ graph) =
     match%sub Bonsai.Proc.Var.value branch with
     | false ->
       let a, _ = Bonsai.state 5 graph in
       name_ref := Some a;
-      let%map a = a
+      let%map a
       and branch = Bonsai.Proc.Var.value branch in
       sprintf "%d %b" a branch
     | true ->

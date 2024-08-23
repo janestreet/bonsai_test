@@ -203,11 +203,7 @@ let subst_tree () =
   let%sub c = opaque_const 3 in
   let%sub d = opaque_const 4 in
   let%sub e = opaque_const 5 in
-  let%arr a = a
-  and b = b
-  and c = c
-  and d = d
-  and e = e in
+  let%arr a and b and c and d and e in
   a + b + c + d + e
 ;;
 
@@ -277,8 +273,7 @@ let diamond () =
   let%sub a = opaque_const 0 in
   let%sub b = Bonsai.pure Fn.id a in
   let%sub c = Bonsai.pure Fn.id a in
-  let%arr b = b
-  and c = c in
+  let%arr b and c in
   b + c
 ;;
 
@@ -427,7 +422,7 @@ let dynamic_scope () =
     (Bonsai.Value.return 10)
     ~inside:
       (let%sub a = Bonsai.Dynamic_scope.lookup dynamic_var in
-       let%arr a = a in
+       let%arr a in
        a)
 ;;
 
@@ -527,7 +522,7 @@ let assoc () =
     (module Int)
     (Value.return (Int.Map.of_alist_exn [ -1, (); 1, () ]))
     ~f:(fun _ _ ->
-      let%arr a = a in
+      let%arr a in
       a)
 ;;
 
@@ -580,7 +575,7 @@ let assoc_constant_folding () =
     (module Int)
     (Value.return (Int.Map.of_alist_exn [ -1, (); 1, () ]))
     ~f:(fun _ _ ->
-      let%arr a = a in
+      let%arr a in
       a)
 ;;
 
@@ -625,7 +620,7 @@ let nested_values ?(a = Value.return 0) () =
   return
     (let%map a =
        let%map a =
-         let%map a = a in
+         let%map a in
          a
        in
        a
@@ -694,7 +689,7 @@ let enum ?(a = Value.return 0) ?(match_ = Value.return true) () =
     ~match_
     ~with_:(function
       | true ->
-        let%arr a = a in
+        let%arr a in
         a > 0
       | false -> return match_)
 ;;

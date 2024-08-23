@@ -73,7 +73,7 @@ let%test_module "Bonsai_extra.with_last_modified_time" =
           match%sub on with
           | true ->
             let%sub x = M.with_last_modified_time ~equal:Int.equal v in
-            let%arr x = x in
+            let%arr x in
             Some x
           | false -> Bonsai.const None
         in
@@ -172,8 +172,7 @@ let%test_module "Bonsai_extra.is_stable" =
             let%sub x =
               M.is_stable ~equal:Int.equal v ~time_to_stable:(Bonsai.Var.value span)
             in
-            let%arr x = x
-            and v = v in
+            let%arr x and v in
             Some (x, v)
           | false -> Bonsai.const None
         in
@@ -371,7 +370,7 @@ let%test_module "Bonsai.most_recent_value_satisfying" =
   (module struct
     module Common (M : sig
         val most_recent_value_satisfying
-          :  ?here:Stdlib.Lexing.position
+          :  here:[%call_pos]
           -> ?sexp_of_model:('a -> Sexp.t)
           -> equal:('a -> 'a -> bool)
           -> 'a Value.t
@@ -429,7 +428,7 @@ let%test_module "Bonsai.most_recent_value_satisfying" =
                 v
                 ~condition:(fun x -> x % 2 = 0)
             in
-            let%arr x = x in
+            let%arr x in
             Some x
           | false -> Bonsai.const None
         in
@@ -615,23 +614,21 @@ let%test_module "Bonsai_extra.value_stability" =
         (* [bounce] is an effect which, when scheduled, will bounce the
            state-machine and set the time-until-stable to the current wallclock
            time plus the provided offset *)
-        let%arr get_current_time = get_current_time
-        and inject = inject
-        and input = input in
+        let%arr get_current_time and inject and input in
         let%bind.Effect now = get_current_time in
         inject (Bounce (input, now))
       in
       let%sub () =
         (* the input value changing triggers a bounce *)
         let%sub callback =
-          let%arr bounce = bounce in
+          let%arr bounce in
           fun _ -> bounce
         in
         Bonsai.Edge.on_change ~sexp_of_model:[%sexp_of: M.t] ~equal input ~callback
       in
       let%sub () =
         let%sub on_deactivate =
-          let%arr inject = inject in
+          let%arr inject in
           inject Deactivate
         in
         (* activating the component bounces it to reset the timer *)
@@ -642,10 +639,7 @@ let%test_module "Bonsai_extra.value_stability" =
         | None -> Bonsai.const ()
         | Some next_stable ->
           let%sub callback =
-            let%arr inject = inject
-            and input = input
-            and get_current_time = get_current_time
-            and bounce = bounce in
+            let%arr inject and input and get_current_time and bounce in
             fun (prev : Bonsai.Clock.Before_or_after.t option)
               (cur : Bonsai.Clock.Before_or_after.t) ->
               match prev, cur with
@@ -664,8 +658,7 @@ let%test_module "Bonsai_extra.value_stability" =
             before_or_after
             ~callback
       in
-      let%arr stability = stability
-      and input = input in
+      let%arr stability and input in
       match stability with
       | Stable input' when equal input' input -> Bonsai_extra.Stability.Stable input
       | Stable previously_stable ->
@@ -764,7 +757,7 @@ let%test_module "Bonsai_extra.value_stability" =
                 v
                 ~time_to_stable:(Value.return (Time_ns.Span.of_sec 1.0))
             in
-            let%arr x = x in
+            let%arr x in
             Some x
           | false -> Bonsai.const None
         in

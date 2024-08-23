@@ -1,10 +1,10 @@
 (library
  (name bonsai_test_of_bonsai_itself)
  (public_name bonsai_test.of_bonsai_itself)
- (libraries bonsai bonsai_test bonsai_test_shared_for_testing_bonsai
-   bonsai.extra bonsai.driver patdiff.expect_test_patdiff
-   core_kernel.composition_infix core expect_test_helpers_core expectable
-   incr_map incremental re virtual_dom.ui_effect incr_dom.ui_incr
+ (libraries bonsai bonsai_test bonsai.extra bonsai.driver
+   patdiff.expect_test_patdiff core_kernel.composition_infix core
+   expect_test_helpers_core expectable incr_map incremental
+   ppx_quick_test.runtime_lib re virtual_dom.ui_effect incr_dom.ui_incr
    incr_dom.ui_time_source)
  (preprocess
   (pps ppx_jane ppx_pattern_bind bonsai.ppx_bonsai ppx_quick_test)))

@@ -94,7 +94,7 @@ module Handle = struct
       let open Bonsai.Let_syntax in
       let%sub result = computation in
       return
-        (let%map result = result in
+        (let%map result in
          result, lazy (R.view result), R.incoming result)
     in
     let time_source = Bonsai.Time_source.create ~start:start_time in
@@ -208,7 +208,7 @@ module Handle = struct
 
   let create
     (type result incoming)
-    ?(here = Stdlib.Lexing.dummy_pos)
+    ~(here : [%call_pos])
     ?start_time
     ?(optimize = true)
     (result_spec : (result, incoming) Result_spec.t)

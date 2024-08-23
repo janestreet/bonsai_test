@@ -16,7 +16,7 @@ end
 
 module Startup : sig
   val run
-    :  (Bonsai.graph -> 'a Bonsai.t)
+    :  (local_ Bonsai.graph -> 'a Bonsai.t)
     -> Bonsai.Private.Skeleton.Counts.t * Incr_report.t
 
   val print_many
@@ -32,8 +32,8 @@ end
 
 module Interaction : sig
   val run
-    :  get_inject:('r -> 'action -> unit Ui_effect.t)
-    -> (Bonsai.graph -> 'r Bonsai.t)
+    :  get_inject:('r -> ('action -> unit Ui_effect.t))
+    -> (local_ Bonsai.graph -> 'r Bonsai.t)
     -> 'action Interaction.Finalized.t list
     -> Incr_report.t
 

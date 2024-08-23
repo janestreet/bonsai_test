@@ -7,7 +7,7 @@ val create
   :  ?optimize:bool
   -> time_source:Bonsai.Time_source.t
   -> initial_input:'i
-  -> ('i Bonsai.Proc.Value.t -> Bonsai.graph -> 'r Bonsai.t)
+  -> ('i Bonsai.Proc.Value.t -> local_ Bonsai.graph -> 'r Bonsai.t)
   -> ('i, 'r) t
 
 val set_input : ('i, _) t -> 'i -> unit

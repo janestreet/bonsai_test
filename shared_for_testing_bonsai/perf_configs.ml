@@ -38,10 +38,10 @@ module Dynamic_num = struct
       ~remove:(fun ~key:_ ~data acc -> acc -. data)
   ;;
 
-  let computation config inputs graph =
+  let computation config inputs (local_ graph) =
     match config with
     | Let_arr ->
-      let%arr inputs = inputs in
+      let%arr inputs in
       Map.map inputs ~f:transform_float |> fold_inputs
     | Map ->
       let mapped = Bonsai.Map.map inputs ~f:transform_float graph in
@@ -51,8 +51,8 @@ module Dynamic_num = struct
         Bonsai.assoc
           (module Opaque_map.Key)
           inputs
-          ~f:(fun _ v _graph ->
-            let%arr v = v in
+          ~f:(fun _ v (local_ _graph) ->
+            let%arr v in
             transform_float v)
           graph
       in
@@ -62,9 +62,9 @@ module Dynamic_num = struct
         Bonsai.assoc
           (module Opaque_map.Key)
           inputs
-          ~f:(fun _ v graph ->
+          ~f:(fun _ v (local_ graph) ->
             let state, _ = Bonsai.state () graph in
-            let%arr v = v
+            let%arr v
             and () = state in
             transform_float v)
           graph
@@ -135,7 +135,7 @@ module Switch = struct
     | Match_sub { uses_state } -> "match%sub" ^ if uses_state then " (state)" else ""
   ;;
 
-  let computation config enabled graph =
+  let computation config enabled (local_ graph) =
     let const x _ = return x in
     let with_state x graph =
       let state, _ = Bonsai.state x graph in
@@ -153,7 +153,7 @@ module Switch = struct
     in
     match config with
     | Arr_then_match _ ->
-      let%arr enabled = enabled
+      let%arr enabled
       and branch_true = f "true" graph
       and branch_false = f "false" graph in
       (match enabled with
