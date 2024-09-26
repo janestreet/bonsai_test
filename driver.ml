@@ -53,3 +53,9 @@ include struct
   let print_stabilizations h = reroute print_stabilizations h
   let print_stabilization_tracker_stats h = reroute print_stabilization_tracker_stats h
 end
+
+module Private = struct
+  let running_computation { handle; _ } =
+    Bonsai_driver.For_testing.running_computation handle
+  ;;
+end

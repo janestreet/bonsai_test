@@ -113,7 +113,7 @@ module _ = Common (struct
       let open Bonsai.Let_syntax in
       let%sub effect = Bonsai.Effect_throttling.poll effect in
       let%sub effect = Bonsai.Effect_throttling.poll effect in
-      let%arr effect = effect in
+      let%arr effect in
       fun int ->
         match%map.Effect effect int with
         | Aborted -> Bonsai.Effect_throttling.Poll_result.Aborted
@@ -253,8 +253,7 @@ let%expect_test {| Effect_throttling.poll in an assoc |} =
         let%sub poll_effect =
           Bonsai.Effect_throttling.poll (Bonsai.Var.value effect_var)
         in
-        let%arr key = key
-        and poll_effect = poll_effect in
+        let%arr key and poll_effect in
         poll_effect key)
   in
   let handle =

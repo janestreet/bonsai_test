@@ -181,13 +181,13 @@ let%test_module "mirror with state" =
         let store_value, store_set = Bonsai.state store graph in
         let interactive_value, interactive_set = Bonsai.state interactive graph in
         let store_set =
-          let%arr store_set = store_set in
+          let%arr store_set in
           fun value ->
             let%bind.Effect () = print_set "store" value in
             store_set value
         in
         let interactive_set =
-          let%arr interactive_set = interactive_set in
+          let%arr interactive_set in
           fun value ->
             let%bind.Effect () = print_set "interactive" value in
             interactive_set value
@@ -202,10 +202,7 @@ let%test_module "mirror with state" =
             ()
             graph
         in
-        let%map store_value = store_value
-        and interactive_value = interactive_value
-        and store_set = store_set
-        and interactive_set = interactive_set in
+        let%map store_value and interactive_value and store_set and interactive_set in
         store_value, store_set, interactive_value, interactive_set
       in
       Handle.create
@@ -641,13 +638,13 @@ let%test_module "mirror' with state" =
           Bonsai.state_opt ?default_model:interactive graph
         in
         let store_set_some =
-          let%arr store_set = store_set in
+          let%arr store_set in
           fun value ->
             let%bind.Effect () = print_set "store" value in
             store_set (Some value)
         in
         let store_set_opt =
-          let%arr store_set = store_set in
+          let%arr store_set in
           fun store ->
             let%bind.Effect () =
               print_set "store" (Option.value store ~default:"<none>")
@@ -655,13 +652,13 @@ let%test_module "mirror' with state" =
             store_set store
         in
         let interactive_set_some =
-          let%arr interactive_set = interactive_set in
+          let%arr interactive_set in
           fun value ->
             let%bind.Effect () = print_set "interactive" value in
             interactive_set (Some value)
         in
         let interactive_set_opt =
-          let%arr interactive_set = interactive_set in
+          let%arr interactive_set in
           fun interactive ->
             let%bind.Effect () =
               print_set "interactive" (Option.value interactive ~default:"<none>")
@@ -678,10 +675,10 @@ let%test_module "mirror' with state" =
             ()
             graph
         in
-        let%map store_value = store_value
-        and interactive_value = interactive_value
-        and store_set_opt = store_set_opt
-        and interactive_set_opt = interactive_set_opt in
+        let%map store_value
+        and interactive_value
+        and store_set_opt
+        and interactive_set_opt in
         store_value, store_set_opt, interactive_value, interactive_set_opt
       in
       Handle.create

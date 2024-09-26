@@ -212,7 +212,7 @@ let%expect_test "get_current_time - behaves correctly" =
       (fun graph ->
         let get_current_time = Bonsai.Clock.get_current_time graph in
         let open Bonsai.Let_syntax in
-        let%arr get_current_time = get_current_time in
+        let%arr get_current_time in
         let%bind.Ui_effect current_time = get_current_time in
         Ui_effect.print_s [%message (current_time : Time_ns.Alternate_sexp.t)])
   in

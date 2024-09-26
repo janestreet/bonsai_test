@@ -270,14 +270,13 @@ let%expect_test "double-use with first use inside scope" =
   let component graph =
     let subcomponent graph =
       let path = Bonsai.path_id graph in
-      let%map path = path in
+      let%map path in
       print_endline ("computing " ^ path);
       path
     in
     let a = subcomponent graph in
     let b = subcomponent graph in
-    let%map a = a
-    and b = b in
+    let%map a and b in
     a ^ " " ^ b
   in
   let handle =

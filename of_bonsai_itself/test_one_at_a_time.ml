@@ -99,9 +99,7 @@ let%expect_test {| Double [One_at_a_time.effect] application should be consisten
         (Value.return (Effect.For_testing.of_query_response_tracker qrt))
     in
     let%sub effect, status2 = One_at_a_time.effect effect in
-    let%arr status1 = status1
-    and status2 = status2
-    and effect = effect in
+    let%arr status1 and status2 and effect in
     effect, status1, status2
   in
   let handle =

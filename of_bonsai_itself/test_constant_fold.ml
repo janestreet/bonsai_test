@@ -400,9 +400,7 @@ let%expect_test "a constant input to assoc gets distributed to a bunch of subs" 
       (module String)
       (Value.return (String.Map.of_alist_exn [ "hello", 0; "world", 5 ]))
       ~f:(fun k v ->
-        let%arr k = k
-        and v = v
-        and from_outside = from_outside in
+        let%arr k and v and from_outside in
         k, v, from_outside)
   in
   print_computation c;
@@ -477,8 +475,7 @@ let%expect_test "constant map + simplifiable assoc function => constant map" =
       (module String)
       (Value.return (String.Map.of_alist_exn [ "hello", 0; "world", 5 ]))
       ~f:(fun k v ->
-        let%arr k = k
-        and v = v in
+        let%arr k and v in
         k, v)
   in
   print_computation c;
@@ -508,8 +505,7 @@ let%expect_test "a constant input with no external dependencies is folded into a
       (module String)
       (Value.return (String.Map.of_alist_exn [ "hello", 0; "world", 5 ]))
       ~f:(fun k v ->
-        let%arr k = k
-        and v = v in
+        let%arr k and v in
         k, v)
   in
   print_computation c;
@@ -606,7 +602,7 @@ let%test_module "Regression: assoc with large constant input" =
               (module Int)
               (return init)
               ~f:(fun _ v _ ->
-                let%arr v = v in
+                let%arr v in
                 v + 1)
               graph
           | `Assoc_on ->
@@ -616,7 +612,7 @@ let%test_module "Regression: assoc with large constant input" =
               (return init)
               ~get_model_key:(fun k _ -> k)
               ~f:(fun _ v _ ->
-                let%arr v = v in
+                let%arr v in
                 v + 1)
               graph
         in

@@ -14,7 +14,7 @@ let run_effect_on_change_and_remind_every_span_if_true
       condition
       graph
       ~callback:
-        (let%arr effect = effect in
+        (let%arr effect in
          fun prev curr ->
            let should_run =
              match prev, curr with

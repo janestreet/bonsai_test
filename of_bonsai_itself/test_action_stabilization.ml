@@ -32,10 +32,7 @@ let%expect_test "Sub/Leaf1/Leaf0" =
     let%sub _, inject2 = no_op_sm1 in
     let%sub _, inject3 = no_op_sm0 in
     let%sub _, inject4 = no_op_sm1 in
-    let%arr inject1 = inject1
-    and inject2 = inject2
-    and inject3 = inject3
-    and inject4 = inject4 in
+    let%arr inject1 and inject2 and inject3 and inject4 in
     inject1 (), inject2 (), inject3 (), inject4 ()
   in
   let module Action = struct
@@ -94,9 +91,7 @@ let%expect_test "Wrap/Model_resetter" =
       ~apply_action:(fun _context _ () () -> ())
       ~f:(fun (_ : unit Value.t) inject_outer ->
         let%sub (_, inject), inject_reset = Bonsai.with_model_resetter no_op_sm1 in
-        let%arr inject_outer = inject_outer
-        and inject_reset = inject_reset
-        and inject = inject in
+        let%arr inject_outer and inject_reset and inject in
         inject_outer (), inject_reset, inject ())
       ()
   in
@@ -187,13 +182,13 @@ let%expect_test "Switch/Lazy" =
     match%sub lazy_branch with
     | false ->
       let%sub _, inject = no_op_sm0 in
-      let%arr inject = inject in
+      let%arr inject in
       inject ()
     | true ->
       (Bonsai.lazy_ [@alert "-deprecated"])
         (lazy
           (let%sub _, inject = no_op_sm0 in
-           let%arr inject = inject in
+           let%arr inject in
            inject ()))
   in
   let handle =
@@ -245,7 +240,7 @@ let%expect_test "Assoc" =
       (Bonsai.Var.value input)
       ~f:(fun _ _ ->
         let%sub _, inject = no_op_sm0 in
-        let%arr inject = inject in
+        let%arr inject in
         inject ())
   in
   let module Action = struct
@@ -344,8 +339,7 @@ let%expect_test "Dynamic actions applied across frames don't need extra stabiliz
   let component =
     let%sub (), inject_first = no_op_sm1 in
     let%sub (), inject_second = no_op_sm1 in
-    let%arr inject_first = inject_first
-    and inject_second = inject_second in
+    let%arr inject_first and inject_second in
     inject_first (), inject_second ()
   in
   let module Action = struct
@@ -403,9 +397,7 @@ let%expect_test "A static action that affects a dynamic action forces a restabil
         ()
     in
     let%sub output, inject_dynamic = copying_sm1 input in
-    let%arr output = output
-    and inject_static = inject_static
-    and inject_dynamic = inject_dynamic in
+    let%arr output and inject_static and inject_dynamic in
     output, inject_static (), inject_dynamic ()
   in
   let module Action = struct
@@ -582,9 +574,7 @@ let%expect_test "state_machine1 that schedules an action which sets an upstream 
         ~apply_action:(fun _context () value -> Incr.Var.set incr_var value)
         ()
     in
-    let%arr state = state
-    and inject = inject
-    and inject_mutation = inject_mutation in
+    let%arr state and inject and inject_mutation in
     state, inject, inject_mutation
   in
   let handle =
@@ -669,9 +659,7 @@ let%expect_test "state_machine1 depending on Incr.Expert.Node.t that breaks abst
         ~apply_action:(fun _context () () -> Incr.Expert.Node.make_stale expert_node)
         ()
     in
-    let%arr model = model
-    and inject_copy = inject_copy
-    and inject_stale = inject_stale in
+    let%arr model and inject_copy and inject_stale in
     model, inject_copy, inject_stale
   in
   let handle =
@@ -748,8 +736,7 @@ let%test_module "pruning" =
     let sm1_requiring_stabilization =
       let%sub _, inject_first = no_op_sm0 in
       let%sub _, inject_second = no_op_sm1 in
-      let%arr inject_first = inject_first
-      and inject_second = inject_second in
+      let%arr inject_first and inject_second in
       Ui_effect.Many [ inject_first (); inject_second () ]
     ;;
 
@@ -883,8 +870,7 @@ let%test_module "the optimization takes effect" =
       let component =
         let%sub _, inject1 = no_op_sm1 in
         let%sub _, inject2 = no_op_sm1 in
-        let%arr inject1 = inject1
-        and inject2 = inject2 in
+        let%arr inject1 and inject2 in
         inject1 (), inject2 ()
       in
       let handle =
@@ -956,14 +942,11 @@ let%test_module "the optimization takes effect" =
             ~apply_action:(fun _context _result _model _action -> ())
             ~f:(fun _model inject_outer ->
               let%sub _, inject_inner = no_op_sm1 in
-              let%arr inject_inner = inject_inner
-              and inject_outer = inject_outer in
+              let%arr inject_inner and inject_outer in
               inject_inner, inject_outer)
             ()
         in
-        let%arr inject_sm1 = inject_sm1
-        and inject_wrap_inner = inject_wrap_inner
-        and inject_wrap_outer = inject_wrap_outer in
+        let%arr inject_sm1 and inject_wrap_inner and inject_wrap_outer in
         inject_sm1 (), inject_wrap_inner (), inject_wrap_outer ()
       in
       let handle =
@@ -1072,14 +1055,11 @@ let%test_module "interesting action delivery cases" =
         match%sub Bonsai.Var.value var with
         | false ->
           let%sub _state, set_state = Bonsai.state () in
-          let%arr set_state = set_state
-          and set_input = set_input in
+          let%arr set_state and set_input in
           0, set_state, set_input
         | true ->
           let%sub input, copy_input = copying_sm1 input in
-          let%arr input = input
-          and copy_input = copy_input
-          and set_input = set_input in
+          let%arr input and copy_input and set_input in
           input, copy_input, set_input
       in
       let handle =
@@ -1125,8 +1105,7 @@ let%test_module "interesting action delivery cases" =
             (opaque_const_value (Int.Map.of_alist_exn [ 1, (); 2, () ]))
             ~f:(fun _key _data -> copying_sm1 input)
         in
-        let%arr m = m
-        and set_input = set_input in
+        let%arr m and set_input in
         m, set_input
       in
       let handle =
@@ -1178,8 +1157,7 @@ let%test_module "interesting action delivery cases" =
             (opaque_const_value (Int.Map.of_alist_exn [ 1, (); 2, () ]))
             ~f:(fun _key _data -> copying_sm1 input)
         in
-        let%arr m = m
-        and set_input = set_input in
+        let%arr m and set_input in
         m, set_input
       in
       let handle =
@@ -1232,8 +1210,7 @@ let%test_module "interesting action delivery cases" =
                | `Set i -> i
                | `Copy -> result)
              ~f:(fun model inject_outer ->
-               let%arr model = model
-               and inject_outer = inject_outer in
+               let%arr model and inject_outer in
                model, inject_outer)
              ())
       in
@@ -1296,8 +1273,7 @@ let%test_module "interesting action delivery cases" =
                     schedule_event (inject_outer action))
                 inject_outer
             in
-            let%arr model = model
-            and inject_inner = inject_inner in
+            let%arr model and inject_inner in
             model, inject_inner)
           ()
       in

@@ -94,7 +94,7 @@ module Handle = struct
       let open Bonsai.Let_syntax in
       let%sub result = computation in
       return
-        (let%map result = result in
+        (let%map result in
          result, lazy (R.view result), R.incoming result)
     in
     let time_source = Bonsai.Time_source.create ~start:start_time in
@@ -188,6 +188,7 @@ module Handle = struct
     if (not (Set.is_empty internal_locations)) && Core.am_running_test
     then (
       Expect_test_helpers_core.print_cr
+        ~cr:Comment
         (Sexp.Atom "SMALL BUG IN BONSAI! Un-threadded internal locations");
       print_s [%message (internal_locations : String.Set.t)])
   ;;
@@ -214,6 +215,7 @@ module Handle = struct
     (result_spec : (result, incoming) Result_spec.t)
     computation
     =
+    let handle = create ?start_time ~optimize result_spec computation in
     (* [assert_node_paths_identical_between_transform_and_skeleton_nodepaths] is a useful
        function to verify that the skeleton code correctly generates node_path identifiers.
        It's nice to run on every test, but was taking up ~20% of the run time for most
@@ -228,8 +230,8 @@ module Handle = struct
        || String.is_prefix here.pos_fname ~prefix:{|lib/bonsai/web_test/of_bonsai_itself|}
     then
       assert_no_unthreaded_locations_in_bonsai's_internals
-        (Bonsai.Private.top_level_handle computation);
-    create ?start_time ~optimize result_spec computation
+        (Driver.Private.running_computation handle);
+    handle
   ;;
 
   let last_result handle =

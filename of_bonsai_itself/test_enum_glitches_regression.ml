@@ -72,7 +72,7 @@ let%expect_test _ =
     in
     Bonsai.read
       (let%map view = body
-       and incoming = incoming in
+       and incoming in
        { Result.view; incoming })
   in
   let handle = Handle.create (module Result) graph in
