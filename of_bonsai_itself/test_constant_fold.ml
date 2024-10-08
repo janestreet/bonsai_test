@@ -587,149 +587,147 @@ let%expect_test "Static exception node on missing index of [Let_syntax.switch]."
   [%expect {| (Return (value Exception)) |}]
 ;;
 
-let%test_module "Regression: assoc with large constant input" =
-  (module struct
-    open Bonsai_cont
-    open Let_syntax
+module%test [@name "Regression: assoc with large constant input"] _ = struct
+  open Bonsai_cont
+  open Let_syntax
 
-    let stack_overflow_regression_test ~kind ~n =
-      let init = List.init n ~f:(fun i -> i, i) |> Int.Map.of_alist_exn in
-      let computation graph =
-        let mapped =
-          match kind with
-          | `Assoc ->
-            Bonsai.assoc
-              (module Int)
-              (return init)
-              ~f:(fun _ v _ ->
-                let%arr v in
-                v + 1)
-              graph
-          | `Assoc_on ->
-            Bonsai.Expert.assoc_on
-              (module Int)
-              (module Int)
-              (return init)
-              ~get_model_key:(fun k _ -> k)
-              ~f:(fun _ v _ ->
-                let%arr v in
-                v + 1)
-              graph
-        in
-        Bonsai.Map.unordered_fold
-          mapped
-          ~init:0
-          ~add:(fun ~key:_ ~data acc -> acc + data)
-          ~remove:(fun ~key:_ ~data acc -> acc - data)
-          graph
+  let stack_overflow_regression_test ~kind ~n =
+    let init = List.init n ~f:(fun i -> i, i) |> Int.Map.of_alist_exn in
+    let computation graph =
+      let mapped =
+        match kind with
+        | `Assoc ->
+          Bonsai.assoc
+            (module Int)
+            (return init)
+            ~f:(fun _ v _ ->
+              let%arr v in
+              v + 1)
+            graph
+        | `Assoc_on ->
+          Bonsai.Expert.assoc_on
+            (module Int)
+            (module Int)
+            (return init)
+            ~get_model_key:(fun k _ -> k)
+            ~f:(fun _ v _ ->
+              let%arr v in
+              v + 1)
+            graph
       in
-      Private.top_level_handle computation
-      |> Private.Constant_fold.constant_fold
-      |> sexp_of_computation
-      |> print_s
-    ;;
+      Bonsai.Map.unordered_fold
+        mapped
+        ~init:0
+        ~add:(fun ~key:_ ~data acc -> acc + data)
+        ~remove:(fun ~key:_ ~data acc -> acc - data)
+        graph
+    in
+    Private.top_level_handle computation
+    |> Private.Constant_fold.constant_fold
+    |> sexp_of_computation
+    |> print_s
+  ;;
 
-    let test_assoc = stack_overflow_regression_test ~kind:`Assoc
-    let test_assoc_on = stack_overflow_regression_test ~kind:`Assoc_on
+  let test_assoc = stack_overflow_regression_test ~kind:`Assoc
+  let test_assoc_on = stack_overflow_regression_test ~kind:`Assoc_on
 
-    let%expect_test "Regression: constant fold of assoc with small constant input does \
-                     not error"
-      =
-      test_assoc ~n:100;
-      [%expect
-        {|
-        (Sub
-          (from (Assoc_simpl (map (Constant (id (Test 0))))))
-          (via (Test 1))
-          (into (Leaf_incr (input (Named (uid (Test 1)))))))
-        |}];
-      test_assoc ~n:1_000;
-      [%expect
-        {|
-        (Sub
-          (from (Assoc_simpl (map (Constant (id (Test 0))))))
-          (via (Test 1))
-          (into (Leaf_incr (input (Named (uid (Test 1)))))))
-        |}];
-      test_assoc ~n:10_000;
-      [%expect
-        {|
-        (Sub
-          (from (Assoc_simpl (map (Constant (id (Test 0))))))
-          (via (Test 1))
-          (into (Leaf_incr (input (Named (uid (Test 1)))))))
-        |}];
-      test_assoc ~n:25_000;
-      [%expect
-        {|
-        (Sub
-          (from (Assoc_simpl (map (Constant (id (Test 0))))))
-          (via (Test 1))
-          (into (Leaf_incr (input (Named (uid (Test 1)))))))
-        |}]
-    ;;
+  let%expect_test "Regression: constant fold of assoc with small constant input does not \
+                   error"
+    =
+    test_assoc ~n:100;
+    [%expect
+      {|
+      (Sub
+        (from (Assoc_simpl (map (Constant (id (Test 0))))))
+        (via (Test 1))
+        (into (Leaf_incr (input (Named (uid (Test 1)))))))
+      |}];
+    test_assoc ~n:1_000;
+    [%expect
+      {|
+      (Sub
+        (from (Assoc_simpl (map (Constant (id (Test 0))))))
+        (via (Test 1))
+        (into (Leaf_incr (input (Named (uid (Test 1)))))))
+      |}];
+    test_assoc ~n:10_000;
+    [%expect
+      {|
+      (Sub
+        (from (Assoc_simpl (map (Constant (id (Test 0))))))
+        (via (Test 1))
+        (into (Leaf_incr (input (Named (uid (Test 1)))))))
+      |}];
+    test_assoc ~n:25_000;
+    [%expect
+      {|
+      (Sub
+        (from (Assoc_simpl (map (Constant (id (Test 0))))))
+        (via (Test 1))
+        (into (Leaf_incr (input (Named (uid (Test 1)))))))
+      |}]
+  ;;
 
-    let%expect_test "Regression: constant fold of assoc with large constant input does \
-                     not error"
-      =
-      test_assoc ~n:50_000;
-      [%expect
-        {|
-        (Sub
-          (from (Assoc_simpl (map (Constant (id (Test 0))))))
-          (via (Test 1))
-          (into (Leaf_incr (input (Named (uid (Test 1)))))))
-        |}]
-    ;;
+  let%expect_test "Regression: constant fold of assoc with large constant input does not \
+                   error"
+    =
+    test_assoc ~n:50_000;
+    [%expect
+      {|
+      (Sub
+        (from (Assoc_simpl (map (Constant (id (Test 0))))))
+        (via (Test 1))
+        (into (Leaf_incr (input (Named (uid (Test 1)))))))
+      |}]
+  ;;
 
-    let%expect_test "Regression: constant fold of assoc_on with small constant input \
-                     does not error"
-      =
-      test_assoc_on ~n:100;
-      [%expect
-        {|
-        (Sub
-          (from (Assoc_simpl (map (Constant (id (Test 0))))))
-          (via (Test 1))
-          (into (Leaf_incr (input (Named (uid (Test 1)))))))
-        |}];
-      test_assoc_on ~n:1_000;
-      [%expect
-        {|
-        (Sub
-          (from (Assoc_simpl (map (Constant (id (Test 0))))))
-          (via (Test 1))
-          (into (Leaf_incr (input (Named (uid (Test 1)))))))
-        |}];
-      test_assoc_on ~n:10_000;
-      [%expect
-        {|
-        (Sub
-          (from (Assoc_simpl (map (Constant (id (Test 0))))))
-          (via (Test 1))
-          (into (Leaf_incr (input (Named (uid (Test 1)))))))
-        |}];
-      test_assoc_on ~n:25_000;
-      [%expect
-        {|
-        (Sub
-          (from (Assoc_simpl (map (Constant (id (Test 0))))))
-          (via (Test 1))
-          (into (Leaf_incr (input (Named (uid (Test 1)))))))
-        |}]
-    ;;
+  let%expect_test "Regression: constant fold of assoc_on with small constant input does \
+                   not error"
+    =
+    test_assoc_on ~n:100;
+    [%expect
+      {|
+      (Sub
+        (from (Assoc_simpl (map (Constant (id (Test 0))))))
+        (via (Test 1))
+        (into (Leaf_incr (input (Named (uid (Test 1)))))))
+      |}];
+    test_assoc_on ~n:1_000;
+    [%expect
+      {|
+      (Sub
+        (from (Assoc_simpl (map (Constant (id (Test 0))))))
+        (via (Test 1))
+        (into (Leaf_incr (input (Named (uid (Test 1)))))))
+      |}];
+    test_assoc_on ~n:10_000;
+    [%expect
+      {|
+      (Sub
+        (from (Assoc_simpl (map (Constant (id (Test 0))))))
+        (via (Test 1))
+        (into (Leaf_incr (input (Named (uid (Test 1)))))))
+      |}];
+    test_assoc_on ~n:25_000;
+    [%expect
+      {|
+      (Sub
+        (from (Assoc_simpl (map (Constant (id (Test 0))))))
+        (via (Test 1))
+        (into (Leaf_incr (input (Named (uid (Test 1)))))))
+      |}]
+  ;;
 
-    let%expect_test "Regression: constant fold of assoc_on with large constant input  \
-                     does not error"
-      =
-      test_assoc_on ~n:50_000;
-      [%expect
-        {|
-        (Sub
-          (from (Assoc_simpl (map (Constant (id (Test 0))))))
-          (via (Test 1))
-          (into (Leaf_incr (input (Named (uid (Test 1)))))))
-        |}]
-    ;;
-  end)
-;;
+  let%expect_test "Regression: constant fold of assoc_on with large constant input  does \
+                   not error"
+    =
+    test_assoc_on ~n:50_000;
+    [%expect
+      {|
+      (Sub
+        (from (Assoc_simpl (map (Constant (id (Test 0))))))
+        (via (Test 1))
+        (into (Leaf_incr (input (Named (uid (Test 1)))))))
+      |}]
+  ;;
+end

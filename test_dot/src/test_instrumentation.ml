@@ -22,7 +22,11 @@ module Expect_test_config = struct
   let sanitize = Expect_test_helpers_core.hide_positions_in_string
 end
 
-let start_timer label = print_endline [%string "start-%{label}"]
+let start_timer label =
+  print_endline [%string "start-%{label}"];
+  label
+;;
+
 let stop_timer label = print_endline [%string "stop-%{label}"]
 
 (* Each test sets this ref to the location at which the test began, so that

@@ -111,663 +111,647 @@ let%expect_test "stateful computation" =
     |}]
 ;;
 
-let%test_module "sub" =
-  (module struct
-    let%expect_test "two stateful computations" =
-      print
-        (let%sub _ = stateful_static_computation in
-         stateful_static_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model (
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
-            (action (
-              Sub
-              (Leaf
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
-              (Leaf
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
-            (input (unit unit))))
-          (incr_graph (
-            (nodes 5)
-            (edges 2))))
-        |}]
-    ;;
+module%test [@name "sub"] _ = struct
+  let%expect_test "two stateful computations" =
+    print
+      (let%sub _ = stateful_static_computation in
+       stateful_static_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model (
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
+          (action (
+            Sub
+            (Leaf
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
+            (Leaf
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+          (input (unit unit))))
+        (incr_graph (
+          (nodes 5)
+          (edges 2))))
+      |}]
+  ;;
 
-    let%expect_test "one stateful computation on left" =
-      print
-        (let%sub () = constant_computation in
-         stateful_static_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (action (
+  let%expect_test "one stateful computation on left" =
+    print
+      (let%sub () = constant_computation in
+       stateful_static_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model
+           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+          (action (
+            Leaf
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
+          (input unit)))
+        (incr_graph (
+          (nodes 4)
+          (edges 1))))
+      |}]
+  ;;
+
+  let%expect_test "one stateful computation on right" =
+    print
+      (let%sub _ = stateful_static_computation in
+       constant_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model
+           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+          (action (
+            Leaf
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
+          (input unit)))
+        (incr_graph (
+          (nodes 3)
+          (edges 0))))
+      |}]
+  ;;
+
+  let%expect_test "no stateful computations" =
+    print
+      (let%sub _ = constant_computation in
+       constant_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
+        (incr_graph (
+          (nodes 3)
+          (edges 0))))
+      |}]
+  ;;
+end
+
+module%test [@name "model_resetter"] _ = struct
+  let%expect_test "model_resetter around constant computation" =
+    print (Bonsai.with_model_resetter constant_computation);
+    [%expect
+      {|
+      ("without optimizations"
+        (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
+        (incr_graph (
+          (nodes 3)
+          (edges 0))))
+
+      ("with optimizations"
+        (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
+        (incr_graph (
+          (nodes 4)
+          (edges 1))))
+      |}]
+  ;;
+
+  let%expect_test "model_resetter around non-constant computation" =
+    print (Bonsai.with_model_resetter stateful_static_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model
+           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+          (action (
+            Model_reset (
               Leaf
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
-            (input unit)))
-          (incr_graph (
-            (nodes 4)
-            (edges 1))))
-        |}]
-    ;;
+              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+          (input unit)))
+        (incr_graph (
+          (nodes 6)
+          (edges 3))))
+      |}]
+  ;;
+end
 
-    let%expect_test "one stateful computation on right" =
-      print
-        (let%sub _ = stateful_static_computation in
-         constant_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (action (
+module%test [@name "wrap"] _ = struct
+  let wrap_around c =
+    Bonsai.wrap
+      ~default_model:()
+      ~apply_action:(fun _context _result _model _action -> ())
+      ~f:(fun _model _inject -> c)
+      ()
+  ;;
+
+  let%expect_test "wrap around constant computation" =
+    print (wrap_around constant_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model ("outer model for wrap-model" unit))
+          (action (Wrap (Leaf Nothing.t) "action id"))
+          (input (unit input))))
+        (incr_graph (
+          (nodes 3)
+          (edges 1))))
+      |}]
+  ;;
+
+  let%expect_test "wrap around non-constant computation" =
+    print (wrap_around stateful_static_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model (
+            "outer model for wrap-model"
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
+          (action (
+            Wrap
+            (Leaf
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
+            "action id"))
+          (input (unit input))))
+        (incr_graph (
+          (nodes 5)
+          (edges 3))))
+      |}]
+  ;;
+end
+
+module%test [@name "assoc"] _ = struct
+  let%expect_test "constant inside assoc" =
+    print
+      (Bonsai.assoc
+         (module Int)
+         (opaque_const_value Int.Map.empty)
+         ~f:(fun _ _ -> constant_computation));
+    [%expect
+      {|
+      ("without optimizations"
+        (shapes (
+          (model unit)
+          (action (Assoc "key id" (Leaf Nothing.t)))
+          (input (optional unit))))
+        (incr_graph (
+          (nodes 10)
+          (edges 9))))
+
+      ("with optimizations"
+        (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
+        (incr_graph (
+          (nodes 4)
+          (edges 1))))
+      |}]
+  ;;
+
+  let%expect_test "static state inside assoc" =
+    print
+      (Bonsai.assoc
+         (module Int)
+         (opaque_const_value Int.Map.empty)
+         ~f:(fun _ _ -> stateful_static_computation));
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model
+           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+          (action (
+            Assoc "key id" (
               Leaf
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
-            (input unit)))
-          (incr_graph (
-            (nodes 3)
-            (edges 0))))
-        |}]
-    ;;
+              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+          (input (optional unit))))
+        (incr_graph (
+          (nodes 10)
+          (edges 9))))
+      |}]
+  ;;
 
-    let%expect_test "no stateful computations" =
-      print
-        (let%sub _ = constant_computation in
-         constant_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
-          (incr_graph (
-            (nodes 3)
-            (edges 0))))
-        |}]
-    ;;
-  end)
-;;
-
-let%test_module "model_resetter" =
-  (module struct
-    let%expect_test "model_resetter around constant computation" =
-      print (Bonsai.with_model_resetter constant_computation);
-      [%expect
-        {|
-        ("without optimizations"
-          (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
-          (incr_graph (
-            (nodes 3)
-            (edges 0))))
-
-        ("with optimizations"
-          (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
-          (incr_graph (
-            (nodes 4)
-            (edges 1))))
-        |}]
-    ;;
-
-    let%expect_test "model_resetter around non-constant computation" =
-      print (Bonsai.with_model_resetter stateful_static_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (action (
-              Model_reset (
-                Leaf
-                lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
-            (input unit)))
-          (incr_graph (
-            (nodes 6)
-            (edges 3))))
-        |}]
-    ;;
-  end)
-;;
-
-let%test_module "wrap" =
-  (module struct
-    let wrap_around c =
-      Bonsai.wrap
-        ~default_model:()
-        ~apply_action:(fun _context _result _model _action -> ())
-        ~f:(fun _model _inject -> c)
-        ()
-    ;;
-
-    let%expect_test "wrap around constant computation" =
-      print (wrap_around constant_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model ("outer model for wrap-model" unit))
-            (action (Wrap (Leaf Nothing.t) "action id"))
-            (input (unit input))))
-          (incr_graph (
-            (nodes 3)
-            (edges 1))))
-        |}]
-    ;;
-
-    let%expect_test "wrap around non-constant computation" =
-      print (wrap_around stateful_static_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model (
-              "outer model for wrap-model"
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
-            (action (
-              Wrap
-              (Leaf
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
-              "action id"))
-            (input (unit input))))
-          (incr_graph (
-            (nodes 5)
-            (edges 3))))
-        |}]
-    ;;
-  end)
-;;
-
-let%test_module "assoc" =
-  (module struct
-    let%expect_test "constant inside assoc" =
-      print
-        (Bonsai.assoc
-           (module Int)
-           (opaque_const_value Int.Map.empty)
-           ~f:(fun _ _ -> constant_computation));
-      [%expect
-        {|
-        ("without optimizations"
-          (shapes (
-            (model unit)
-            (action (Assoc "key id" (Leaf Nothing.t)))
-            (input (optional unit))))
-          (incr_graph (
-            (nodes 10)
-            (edges 9))))
-
-        ("with optimizations"
-          (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
-          (incr_graph (
-            (nodes 4)
-            (edges 1))))
-        |}]
-    ;;
-
-    let%expect_test "static state inside assoc" =
-      print
-        (Bonsai.assoc
-           (module Int)
-           (opaque_const_value Int.Map.empty)
-           ~f:(fun _ _ -> stateful_static_computation));
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (action (
-              Assoc "key id" (
-                Leaf
-                lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
-            (input (optional unit))))
-          (incr_graph (
-            (nodes 10)
-            (edges 9))))
-        |}]
-    ;;
-
-    let%expect_test "dynamic_state inside assoc" =
-      print
-        (Bonsai.assoc
-           (module Int)
-           (opaque_const_value Int.Map.empty)
-           ~f:(fun _ _ -> stateful_dynamic_computation));
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (action (
-              Assoc "key id" (
-                Leaf
-                lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
-            (input (optional input))))
-          (incr_graph (
-            (nodes 13)
-            (edges 12))))
-        |}]
-    ;;
-  end)
-;;
-
-let%test_module "assoc_on" =
-  (module struct
-    let%expect_test "constant inside assoc_on" =
-      print
-        (Bonsai.Expert.assoc_on
-           (module Int)
-           (module Int)
-           (opaque_const_value Int.Map.empty)
-           ~get_model_key:(fun k _ -> k)
-           ~f:(fun _ _ -> constant_computation));
-      [%expect
-        {|
-        ("without optimizations"
-          (shapes (
-            (model unit)
-            (action (Assoc "io key id" "model key id" (Leaf Nothing.t)))
-            (input (optional unit))))
-          (incr_graph (
-            (nodes 8)
-            (edges 7))))
-
-        ("with optimizations"
-          (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
-          (incr_graph (
-            (nodes 4)
-            (edges 1))))
-        |}]
-    ;;
-
-    let%expect_test "state inside assoc_on" =
-      print
-        (Bonsai.Expert.assoc_on
-           (module Int)
-           (module Int)
-           (opaque_const_value Int.Map.empty)
-           ~get_model_key:(fun k _ -> k)
-           ~f:(fun _ _ -> stateful_static_computation));
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (action (
-              Assoc "io key id" "model key id" (
-                Leaf
-                lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
-            (input (optional unit))))
-          (incr_graph (
-            (nodes 8)
-            (edges 7))))
-        |}]
-    ;;
-  end)
-;;
-
-let%test_module "switch" =
-  (module struct
-    let%expect_test "constant inside switch" =
-      print
-        (match%sub opaque_const_value true with
-         | false -> constant_computation
-         | true -> constant_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model (
-              (0 unit)
-              (1 unit)))
-            (action Switch)
-            (input (optional "enum input"))))
-          (incr_graph (
-            (nodes 10)
-            (edges 9))))
-        |}]
-    ;;
-
-    let%expect_test "static state inside switch" =
-      print
-        (match%sub opaque_const_value true with
-         | false -> stateful_static_computation
-         | true -> stateful_static_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model (
-              (0
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-              (1
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
-            (action Switch)
-            (input (optional "enum input"))))
-          (incr_graph (
-            (nodes 12)
-            (edges 12))))
-        |}]
-    ;;
-
-    let%expect_test "dynamic state inside switch" =
-      print
-        (match%sub opaque_const_value true with
-         | false -> stateful_dynamic_computation
-         | true -> stateful_dynamic_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model (
-              (0
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-              (1
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
-            (action Switch)
-            (input (optional "enum input"))))
-          (incr_graph (
-            (nodes 15)
-            (edges 17))))
-        |}]
-    ;;
-
-    let%expect_test "both static and dynamic state inside switch" =
-      print
-        (match%sub opaque_const_value true with
-         | false -> stateful_static_computation
-         | true -> stateful_dynamic_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model (
-              (0
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-              (1
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
-            (action Switch)
-            (input (optional "enum input"))))
-          (incr_graph (
-            (nodes 15)
-            (edges 17))))
-        |}]
-    ;;
-  end)
-;;
-
-let%test_module "optimizable switch" =
-  (module struct
-    let%expect_test "constant inside switch" =
-      print
-        (match%sub Value.return true with
-         | false -> constant_computation
-         | true -> constant_computation);
-      [%expect
-        {|
-        ("without optimizations"
-          (shapes (
-            (model (
-              (0 unit)
-              (1 unit)))
-            (action Switch)
-            (input (optional "enum input"))))
-          (incr_graph (
-            (nodes 10)
-            (edges 9))))
-
-        ("with optimizations"
-          (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
-          (incr_graph (
-            (nodes 3)
-            (edges 0))))
-        |}]
-    ;;
-
-    let%expect_test "static state inside switch" =
-      print
-        (match%sub Value.return true with
-         | false -> stateful_static_computation
-         | true -> stateful_static_computation);
-      [%expect
-        {|
-        ("without optimizations"
-          (shapes (
-            (model (
-              (0
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-              (1
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
-            (action Switch)
-            (input (optional "enum input"))))
-          (incr_graph (
-            (nodes 12)
-            (edges 12))))
-
-        ("with optimizations"
-          (shapes (
-            (model
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (action (
+  let%expect_test "dynamic_state inside assoc" =
+    print
+      (Bonsai.assoc
+         (module Int)
+         (opaque_const_value Int.Map.empty)
+         ~f:(fun _ _ -> stateful_dynamic_computation));
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model
+           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+          (action (
+            Assoc "key id" (
               Leaf
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
-            (input unit)))
-          (incr_graph (
-            (nodes 4)
-            (edges 1))))
-        |}]
-    ;;
+              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+          (input (optional input))))
+        (incr_graph (
+          (nodes 13)
+          (edges 12))))
+      |}]
+  ;;
+end
 
-    let%expect_test "dynamic state inside switch" =
-      print
-        (match%sub Value.return true with
-         | false -> stateful_dynamic_computation
-         | true -> stateful_dynamic_computation);
-      [%expect
-        {|
-        ("without optimizations"
-          (shapes (
-            (model (
-              (0
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-              (1
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
-            (action Switch)
-            (input (optional "enum input"))))
-          (incr_graph (
-            (nodes 15)
-            (edges 17))))
+module%test [@name "assoc_on"] _ = struct
+  let%expect_test "constant inside assoc_on" =
+    print
+      (Bonsai.Expert.assoc_on
+         (module Int)
+         (module Int)
+         (opaque_const_value Int.Map.empty)
+         ~get_model_key:(fun k _ -> k)
+         ~f:(fun _ _ -> constant_computation));
+    [%expect
+      {|
+      ("without optimizations"
+        (shapes (
+          (model unit)
+          (action (Assoc "io key id" "model key id" (Leaf Nothing.t)))
+          (input (optional unit))))
+        (incr_graph (
+          (nodes 8)
+          (edges 7))))
 
-        ("with optimizations"
-          (shapes (
-            (model
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (action (
+      ("with optimizations"
+        (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
+        (incr_graph (
+          (nodes 4)
+          (edges 1))))
+      |}]
+  ;;
+
+  let%expect_test "state inside assoc_on" =
+    print
+      (Bonsai.Expert.assoc_on
+         (module Int)
+         (module Int)
+         (opaque_const_value Int.Map.empty)
+         ~get_model_key:(fun k _ -> k)
+         ~f:(fun _ _ -> stateful_static_computation));
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model
+           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+          (action (
+            Assoc "io key id" "model key id" (
               Leaf
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
-            (input input)))
-          (incr_graph (
-            (nodes 4)
-            (edges 1))))
-        |}]
-    ;;
+              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+          (input (optional unit))))
+        (incr_graph (
+          (nodes 8)
+          (edges 7))))
+      |}]
+  ;;
+end
 
-    let%expect_test "both static and dynamic state inside switch" =
-      print
-        (match%sub Value.return true with
-         | false -> stateful_static_computation
-         | true -> stateful_dynamic_computation);
-      [%expect
-        {|
-        ("without optimizations"
-          (shapes (
-            (model (
-              (0
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-              (1
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
-            (action Switch)
-            (input (optional "enum input"))))
-          (incr_graph (
-            (nodes 15)
-            (edges 17))))
+module%test [@name "switch"] _ = struct
+  let%expect_test "constant inside switch" =
+    print
+      (match%sub opaque_const_value true with
+       | false -> constant_computation
+       | true -> constant_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model (
+            (0 unit)
+            (1 unit)))
+          (action Switch)
+          (input (optional "enum input"))))
+        (incr_graph (
+          (nodes 10)
+          (edges 9))))
+      |}]
+  ;;
 
-        ("with optimizations"
-          (shapes (
-            (model
+  let%expect_test "static state inside switch" =
+    print
+      (match%sub opaque_const_value true with
+       | false -> stateful_static_computation
+       | true -> stateful_static_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model (
+            (0
              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (action (
-              Leaf
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
-            (input input)))
-          (incr_graph (
-            (nodes 4)
-            (edges 1))))
-        |}]
-    ;;
+            (1
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+          (action Switch)
+          (input (optional "enum input"))))
+        (incr_graph (
+          (nodes 12)
+          (edges 12))))
+      |}]
+  ;;
 
-    let%expect_test "both static and dynamic state inside switch (swapped order)" =
-      print
-        (match%sub Value.return true with
-         | false -> stateful_dynamic_computation
-         | true -> stateful_static_computation);
-      [%expect
-        {|
-        ("without optimizations"
-          (shapes (
-            (model (
-              (0
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-              (1
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
-            (action Switch)
-            (input (optional "enum input"))))
-          (incr_graph (
-            (nodes 15)
-            (edges 18))))
-
-        ("with optimizations"
-          (shapes (
-            (model
+  let%expect_test "dynamic state inside switch" =
+    print
+      (match%sub opaque_const_value true with
+       | false -> stateful_dynamic_computation
+       | true -> stateful_dynamic_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model (
+            (0
              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (action (
-              Leaf
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
-            (input unit)))
-          (incr_graph (
-            (nodes 4)
-            (edges 1))))
-        |}]
-    ;;
-  end)
-;;
+            (1
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+          (action Switch)
+          (input (optional "enum input"))))
+        (incr_graph (
+          (nodes 15)
+          (edges 17))))
+      |}]
+  ;;
 
-let%test_module "action grid" =
-  (module struct
-    let%expect_test "no static, both dynamic" =
-      print
-        (let%sub _ = stateful_dynamic_computation in
-         stateful_dynamic_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model (
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
-            (action (
-              Sub
-              (Leaf
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
-              (Leaf
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
-            (input (input input))))
-          (incr_graph (
-            (nodes 6)
-            (edges 4))))
-        |}]
-    ;;
+  let%expect_test "both static and dynamic state inside switch" =
+    print
+      (match%sub opaque_const_value true with
+       | false -> stateful_static_computation
+       | true -> stateful_dynamic_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model (
+            (0
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+            (1
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+          (action Switch)
+          (input (optional "enum input"))))
+        (incr_graph (
+          (nodes 15)
+          (edges 17))))
+      |}]
+  ;;
+end
 
-    let%expect_test "both static, no dynamic" =
-      print
-        (let%sub _ = stateful_static_computation in
-         stateful_static_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model (
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
-            (action (
-              Sub
-              (Leaf
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
-              (Leaf
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
-            (input (unit unit))))
-          (incr_graph (
-            (nodes 5)
-            (edges 2))))
-        |}]
-    ;;
+module%test [@name "optimizable switch"] _ = struct
+  let%expect_test "constant inside switch" =
+    print
+      (match%sub Value.return true with
+       | false -> constant_computation
+       | true -> constant_computation);
+    [%expect
+      {|
+      ("without optimizations"
+        (shapes (
+          (model (
+            (0 unit)
+            (1 unit)))
+          (action Switch)
+          (input (optional "enum input"))))
+        (incr_graph (
+          (nodes 10)
+          (edges 9))))
 
-    let%expect_test "one static, one dynamic" =
-      print
-        (let%sub _ = stateful_dynamic_computation in
-         stateful_static_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model (
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
-            (action (
-              Sub
-              (Leaf
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
-              (Leaf
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
-            (input (input unit))))
-          (incr_graph (
-            (nodes 6)
-            (edges 3))))
-        |}]
-    ;;
+      ("with optimizations"
+        (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
+        (incr_graph (
+          (nodes 3)
+          (edges 0))))
+      |}]
+  ;;
 
-    let%expect_test "other static, other dynamic" =
-      print
-        (let%sub _ = stateful_static_computation in
-         stateful_dynamic_computation);
-      [%expect
-        {|
-        ("with and without optimizations"
-          (shapes (
-            (model (
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
-            (action (
-              Sub
-              (Leaf
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
-              (Leaf
-               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
-            (input (unit input))))
-          (incr_graph (
-            (nodes 6)
-            (edges 3))))
-        |}]
-    ;;
-  end)
-;;
+  let%expect_test "static state inside switch" =
+    print
+      (match%sub Value.return true with
+       | false -> stateful_static_computation
+       | true -> stateful_static_computation);
+    [%expect
+      {|
+      ("without optimizations"
+        (shapes (
+          (model (
+            (0
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+            (1
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+          (action Switch)
+          (input (optional "enum input"))))
+        (incr_graph (
+          (nodes 12)
+          (edges 12))))
+
+      ("with optimizations"
+        (shapes (
+          (model
+           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+          (action (
+            Leaf
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
+          (input unit)))
+        (incr_graph (
+          (nodes 4)
+          (edges 1))))
+      |}]
+  ;;
+
+  let%expect_test "dynamic state inside switch" =
+    print
+      (match%sub Value.return true with
+       | false -> stateful_dynamic_computation
+       | true -> stateful_dynamic_computation);
+    [%expect
+      {|
+      ("without optimizations"
+        (shapes (
+          (model (
+            (0
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+            (1
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+          (action Switch)
+          (input (optional "enum input"))))
+        (incr_graph (
+          (nodes 15)
+          (edges 17))))
+
+      ("with optimizations"
+        (shapes (
+          (model
+           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+          (action (
+            Leaf
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
+          (input input)))
+        (incr_graph (
+          (nodes 4)
+          (edges 1))))
+      |}]
+  ;;
+
+  let%expect_test "both static and dynamic state inside switch" =
+    print
+      (match%sub Value.return true with
+       | false -> stateful_static_computation
+       | true -> stateful_dynamic_computation);
+    [%expect
+      {|
+      ("without optimizations"
+        (shapes (
+          (model (
+            (0
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+            (1
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+          (action Switch)
+          (input (optional "enum input"))))
+        (incr_graph (
+          (nodes 15)
+          (edges 17))))
+
+      ("with optimizations"
+        (shapes (
+          (model
+           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+          (action (
+            Leaf
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
+          (input input)))
+        (incr_graph (
+          (nodes 4)
+          (edges 1))))
+      |}]
+  ;;
+
+  let%expect_test "both static and dynamic state inside switch (swapped order)" =
+    print
+      (match%sub Value.return true with
+       | false -> stateful_dynamic_computation
+       | true -> stateful_static_computation);
+    [%expect
+      {|
+      ("without optimizations"
+        (shapes (
+          (model (
+            (0
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+            (1
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+          (action Switch)
+          (input (optional "enum input"))))
+        (incr_graph (
+          (nodes 15)
+          (edges 18))))
+
+      ("with optimizations"
+        (shapes (
+          (model
+           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
+          (action (
+            Leaf
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
+          (input unit)))
+        (incr_graph (
+          (nodes 4)
+          (edges 1))))
+      |}]
+  ;;
+end
+
+module%test [@name "action grid"] _ = struct
+  let%expect_test "no static, both dynamic" =
+    print
+      (let%sub _ = stateful_dynamic_computation in
+       stateful_dynamic_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model (
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
+          (action (
+            Sub
+            (Leaf
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
+            (Leaf
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+          (input (input input))))
+        (incr_graph (
+          (nodes 6)
+          (edges 4))))
+      |}]
+  ;;
+
+  let%expect_test "both static, no dynamic" =
+    print
+      (let%sub _ = stateful_static_computation in
+       stateful_static_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model (
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
+          (action (
+            Sub
+            (Leaf
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
+            (Leaf
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+          (input (unit unit))))
+        (incr_graph (
+          (nodes 5)
+          (edges 2))))
+      |}]
+  ;;
+
+  let%expect_test "one static, one dynamic" =
+    print
+      (let%sub _ = stateful_dynamic_computation in
+       stateful_static_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model (
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
+          (action (
+            Sub
+            (Leaf
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
+            (Leaf
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+          (input (input unit))))
+        (incr_graph (
+          (nodes 6)
+          (edges 3))))
+      |}]
+  ;;
+
+  let%expect_test "other static, other dynamic" =
+    print
+      (let%sub _ = stateful_static_computation in
+       stateful_dynamic_computation);
+    [%expect
+      {|
+      ("with and without optimizations"
+        (shapes (
+          (model (
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
+            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
+          (action (
+            Sub
+            (Leaf
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
+            (Leaf
+             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+          (input (unit input))))
+        (incr_graph (
+          (nodes 6)
+          (edges 3))))
+      |}]
+  ;;
+end
 
 let%expect_test "reuse of same Value.t" =
   let constant_value = Value.return 5 in
