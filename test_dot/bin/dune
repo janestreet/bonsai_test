@@ -1,7 +1,7 @@
 (executables
  (modes byte exe)
  (names main)
- (libraries core core_unix.command_unix bonsai_test_dot)
+ (libraries bonsai_test_dot core_unix.command_unix core)
  (preprocess
   (pps ppx_jane)))
 

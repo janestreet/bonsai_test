@@ -31,6 +31,8 @@ module Incr_report = struct
   type t =
     { node_count : int
     ; nodes_created : int
+    ; nodes_recomputed : int
+    ; nodes_invalidated : int
     ; max_height : int
     ; max_node_id : int
     ; annotated_counts_diff : Bonsai.Private.Annotate_incr.Counts.t
@@ -39,13 +41,25 @@ module Incr_report = struct
 
   let measure f =
     let nodes_created_before = Incremental.State.num_nodes_created Ui_incr.State.t in
+    let nodes_recomputed_before =
+      Incremental.State.num_nodes_recomputed Ui_incr.State.t
+    in
+    let nodes_invalidated_before =
+      Incremental.State.num_nodes_invalidated Ui_incr.State.t
+    in
     let annotated_before = Bonsai.Private.Annotate_incr.Counts.current () in
     Mini_profile.start ~label:"run f";
     let r = f () in
     Mini_profile.stop ~label:"run f";
     let nodes_created_after = Incremental.State.num_nodes_created Ui_incr.State.t in
+    let nodes_recomputed_after = Incremental.State.num_nodes_recomputed Ui_incr.State.t in
+    let nodes_invalidated_after =
+      Incremental.State.num_nodes_invalidated Ui_incr.State.t
+    in
     let annotated_after = Bonsai.Private.Annotate_incr.Counts.current () in
     let nodes_created = nodes_created_after - nodes_created_before in
+    let nodes_recomputed = nodes_recomputed_after - nodes_recomputed_before in
+    let nodes_invalidated = nodes_invalidated_after - nodes_invalidated_before in
     let annotated_counts =
       Bonsai.Private.Annotate_incr.Counts.diff
         ~after:annotated_after
@@ -75,6 +89,8 @@ module Incr_report = struct
     let report =
       { node_count
       ; nodes_created
+      ; nodes_recomputed
+      ; nodes_invalidated
       ; max_height
       ; max_node_id
       ; annotated_counts_diff = annotated_counts
@@ -83,6 +99,17 @@ module Incr_report = struct
     r, report
   ;;
 end
+
+let format_diff a b =
+  match b - a with
+  | 0 -> "."
+  | abs_diff ->
+    let pct_change = Float.of_int abs_diff /. Float.of_int a *. 100. in
+    let sign = if abs_diff > 0 then "+" else "" in
+    [%string
+      "%{sign}%{Int.to_string_hum abs_diff} (%{Float.to_string_hum ~decimals:2 \
+       pct_change}%)"]
+;;
 
 module Startup = struct
   let run c =
@@ -100,9 +127,23 @@ module Startup = struct
   let print_many reports =
     print_endline "======= Startup Incr Node Stats =======";
     Expectable.print_alist
-      (fun (_, { Incr_report.max_height; node_count; max_node_id; nodes_created; _ }) ->
+      (fun ( _
+           , { Incr_report.max_height
+             ; node_count
+             ; max_node_id
+             ; nodes_created
+             ; nodes_recomputed
+             ; nodes_invalidated
+             ; _
+             } ) ->
         [%sexp
-          { max_height : int; node_count : int; max_node_id : int; nodes_created : int }])
+          { max_height : int
+          ; node_count : int
+          ; max_node_id : int
+          ; nodes_created : int
+          ; nodes_recomputed : int
+          ; nodes_invalidated : int
+          }])
       reports;
     print_endline "======= Startup Incr Annotated Node Counts =======";
     List.Assoc.map reports ~f:(fun (_, { annotated_counts_diff; _ }) ->
@@ -135,6 +176,63 @@ module Startup = struct
       String.uncapitalize (Config.name config) ^ ": " ^ input_name, run c)
     |> print_many
   ;;
+
+  let print_many_diff ?title reports =
+    let title =
+      match title with
+      | None -> ""
+      | Some title -> [%string " (%{title})"]
+    in
+    print_endline [%string "======= Startup Incr Node Stats%{title} ======="];
+    Expectable.print_alist
+      (fun ( ( _
+             , { Incr_report.max_height = mh1
+               ; node_count = ncount1
+               ; max_node_id = mni1
+               ; nodes_created = ncreated1
+               ; _
+               } )
+           , ( _
+             , { Incr_report.max_height = mh2
+               ; node_count = ncount2
+               ; max_node_id = mni2
+               ; nodes_created = ncreated2
+               ; _
+               } ) ) ->
+        let max_height = format_diff mh1 mh2 in
+        let node_count = format_diff ncount1 ncount2 in
+        let max_node_id = format_diff mni1 mni2 in
+        let nodes_created = format_diff ncreated1 ncreated2 in
+        [%sexp
+          { max_height : string
+          ; node_count : string
+          ; max_node_id : string
+          ; nodes_created : string
+          }])
+      reports
+  ;;
+
+  let diff_pairs_incr_summary_only
+    (type conf input action)
+    ?title
+    (module Config : Config
+      with type t = conf
+       and type input = input
+       and type action = action)
+    inputs
+    pairs
+    =
+    List.cartesian_product inputs pairs
+    |> List.map ~f:(fun ((input_name, input), (comparison_name, config1, config2)) ->
+      let r1 =
+        Config.computation config1 (const_value_not_constant_folded input) |> run
+      in
+      let r2 =
+        Config.computation config2 (const_value_not_constant_folded input) |> run
+      in
+      String.uncapitalize comparison_name ^ ": " ^ input_name, (r1, r2))
+    |> print_many_diff ?title
+  ;;
 end
 
 module Interaction = struct
@@ -159,8 +257,96 @@ module Interaction = struct
     incr_report
   ;;
 
+  let run'
+    (type conf input action)
+    (module Config : Config
+      with type t = conf
+       and type input = input
+       and type action = action)
+    ~initial
+    ~interaction
+    config
+    =
+    (* This has to happen in an inner loop, so that we get a fresh set of vars
+       for each run. *)
+    let input = Input.create initial in
+    let interactions = Interaction.finalize ~filter_profiles:true (interaction input) in
+    run
+      ~get_inject:Config.get_inject
+      (Config.computation config (Input.value input))
+      interactions
+  ;;
+
+  let run_and_print_many
+    ?(print_max_height = false)
+    ?(print_node_count = true)
+    ?(print_max_node_id = false)
+    ?(print_num_created = true)
+    ?(print_num_recomputed = true)
+    ?(print_num_invalidated = true)
+    ?title
+    scenarios
+    to_compare
+    ~run_report
+    ~format_output
+    =
+    Mini_profile.clear ();
+    let reports =
+      List.map scenarios ~f:(fun { Scenario.initial; test_name; interaction } ->
+        let cells =
+          List.map to_compare ~f:(fun to_compare ->
+            run_report ~initial ~interaction to_compare)
+        in
+        test_name, cells)
+    in
+    Expect_test_helpers_base.expect_test_output () |> (ignore : string -> unit);
+    let print_report_for_field ~flag ~f name =
+      if flag
+      then (
+        let title =
+          match title with
+          | None -> ""
+          | Some title -> [%string " (%{title})"]
+        in
+        print_endline [%string "====== %{name}%{title} ======"];
+        List.Assoc.map reports ~f:(List.Assoc.map ~f:(fun data -> format_output ~f data))
+        |> Expectable.print_alist [%sexp_of: (string * string) list])
+    in
+    print_report_for_field
+      ~flag:print_max_height
+      ~f:(fun { Incr_report.max_height; _ } -> max_height)
+      "Max Height";
+    print_report_for_field
+      ~flag:print_node_count
+      ~f:(fun { Incr_report.node_count; _ } -> node_count)
+      "Node Count";
+    print_report_for_field
+      ~flag:print_max_node_id
+      ~f:(fun { Incr_report.max_node_id; _ } -> max_node_id)
+      "Max Node ID";
+    print_report_for_field
+      ~flag:print_num_created
+      ~f:(fun { Incr_report.nodes_created; _ } -> nodes_created)
+      "Nodes Created";
+    print_report_for_field
+      ~flag:print_num_recomputed
+      ~f:(fun { Incr_report.nodes_recomputed; _ } -> nodes_recomputed)
+      "Nodes Recomputed";
+    print_report_for_field
+      ~flag:print_num_invalidated
+      ~f:(fun { Incr_report.nodes_invalidated; _ } -> nodes_invalidated)
+      "Nodes Invalidated"
+  ;;
+
   let run_and_print_compare
     (type conf input action)
+    ?print_max_height
+    ?print_node_count
+    ?print_max_node_id
+    ?print_num_created
+    ?print_num_recomputed
+    ?print_num_invalidated
+    ?title
     (module Config : Config
       with type t = conf
        and type input = input
@@ -168,39 +354,52 @@ module Interaction = struct
     scenarios
     configs
     =
-    Mini_profile.clear ();
-    let reports =
-      List.map scenarios ~f:(fun { Scenario.initial; test_name; interaction } ->
-        let cells =
-          List.map configs ~f:(fun config ->
-            (* This has to happen in an inner loop, so that we get a fresh set of vars
-                   for each run. *)
-            let input = Input.create initial in
-            let interactions =
-              Interaction.finalize ~filter_profiles:true (interaction input)
-            in
-            let report =
-              run
-                ~get_inject:Config.get_inject
-                (Config.computation config (Input.value input))
-                interactions
-            in
-            String.uncapitalize (Config.name config), report)
-        in
-        test_name, cells)
-    in
-    Expect_test_helpers_base.expect_test_output () |> (ignore : string -> unit);
-    let print_report_for_field ~f =
-      List.Assoc.map reports ~f:(List.Assoc.map ~f)
-      |> Expectable.print_alist [%sexp_of: (string * int) list]
-    in
-    print_endline "======= Max Height =======";
-    print_report_for_field ~f:(fun { Incr_report.max_height; _ } -> max_height);
-    print_endline "======= Node Count =======";
-    print_report_for_field ~f:(fun { Incr_report.node_count; _ } -> node_count);
-    print_endline "======= Max Node ID =======";
-    print_report_for_field ~f:(fun { Incr_report.max_node_id; _ } -> max_node_id);
-    print_endline "======= Nodes Created =======";
-    print_report_for_field ~f:(fun { Incr_report.nodes_created; _ } -> nodes_created)
+    run_and_print_many
+      ?print_max_height
+      ?print_node_count
+      ?print_max_node_id
+      ?print_num_created
+      ?print_num_recomputed
+      ?print_num_invalidated
+      ?title
+      scenarios
+      configs
+      ~run_report:(fun ~initial ~interaction config ->
+        let report = run' (module Config) ~initial ~interaction config in
+        String.uncapitalize (Config.name config), report)
+      ~format_output:(fun ~f report -> f report |> Int.to_string)
+  ;;
+
+  let diff_pairs
+    (type conf input action)
+    ?print_max_height
+    ?print_node_count
+    ?print_max_node_id
+    ?print_num_created
+    ?print_num_recomputed
+    ?print_num_invalidated
+    ?title
+    (module Config : Config
+      with type t = conf
+       and type input = input
+       and type action = action)
+    scenarios
+    pairs
+    =
+    run_and_print_many
+      ?print_max_height
+      ?print_node_count
+      ?print_max_node_id
+      ?print_num_created
+      ?print_num_recomputed
+      ?print_num_invalidated
+      ?title
+      scenarios
+      pairs
+      ~run_report:(fun ~initial ~interaction (name, config1, config2) ->
+        let r1 = run' (module Config) ~initial ~interaction config1 in
+        let r2 = run' (module Config) ~initial ~interaction config2 in
+        name, (r1, r2))
+      ~format_output:(fun ~f (fst, snd) -> format_diff (f fst) (f snd))
   ;;
 end

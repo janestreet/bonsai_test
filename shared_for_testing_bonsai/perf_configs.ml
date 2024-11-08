@@ -1,4 +1,5 @@
 open! Core
+open Bonsai
 open Bonsai.Let_syntax
 open Bonsai_perf_shared
 
