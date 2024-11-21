@@ -2,14 +2,6 @@ open! Core
 open! Import
 open! Bonsai_test
 module Proc_bonsai = Bonsai.Proc
-
-module Bonsai = struct
-  include Bonsai
-  module Private = Bonsai.Private
-  module Var = Bonsai.Proc.Var
-  module Effect = Bonsai.Effect
-end
-
 module Effect = Bonsai.Effect
 open Bonsai.Let_syntax
 
@@ -23,26 +15,35 @@ let sexp_of_computation : type a. ?optimize:bool -> (Bonsai.graph -> a Bonsai.t)
   |> Bonsai.Private.Skeleton.Computation.minimal_sexp_of_t
 ;;
 
+module Computation_watcher = Bonsai.Private.Computation_watcher
+module Output_queue = Bonsai.Private.Computation_watcher.Output_queue
+
+module Expect_test_config = struct
+  include Expect_test_config
+
+  let sanitize s = Expect_test_helpers_core.hide_positions_in_string (sanitize s)
+end
+
 let%expect_test "cutoff" =
-  let var = Bonsai.Var.create 0 in
-  let value = Bonsai.Var.value var in
+  let var = Bonsai.Expert.Var.create 0 in
+  let value = Bonsai.Expert.Var.value var in
   let component graph =
     Bonsai.Incr.value_cutoff value ~equal:(fun a b -> a % 2 = b % 2) graph
   in
   let handle = Handle.create (Result_spec.string (module Int)) component in
   Handle.show handle;
   [%expect {| 0 |}];
-  Bonsai.Var.set var 2;
+  Bonsai.Expert.Var.set var 2;
   Handle.show handle;
   [%expect {| 0 |}];
-  Bonsai.Var.set var 1;
+  Bonsai.Expert.Var.set var 1;
   Handle.show handle;
   [%expect {| 1 |}]
 ;;
 
 let%expect_test "debug on change" =
-  let var = Bonsai.Var.create 0 in
-  let value = Bonsai.Var.value var in
+  let var = Bonsai.Expert.Var.create 0 in
+  let value = Bonsai.Expert.Var.value var in
   let component graph =
     Bonsai.Debug.on_change value graph ~f:(fun i -> printf "%d" i);
     return ()
@@ -50,15 +51,15 @@ let%expect_test "debug on change" =
   let handle = Handle.create Result_spec.invisible component in
   Handle.show handle;
   [%expect {| 0 |}];
-  Bonsai.Var.set var 1;
+  Bonsai.Expert.Var.set var 1;
   Handle.show handle;
   [%expect {| 1 |}];
-  Bonsai.Var.set var 2;
+  Bonsai.Expert.Var.set var 2;
   Handle.show handle;
   [%expect {| 2 |}]
 ;;
 
-module%test [@name "free vars"] _ = struct
+module%test [@name "computation watcher"] _ = struct
   module Result_spec = struct
     type t = (int -> unit Effect.t) * (int -> unit Effect.t)
 
@@ -75,28 +76,1172 @@ module%test [@name "free vars"] _ = struct
     ;;
   end
 
-  let enable_free_variable_monitor computation graph =
-    Bonsai.Private.handle graph ~f:computation
-    |> Bonsai.Private.Enable_free_variable_monitor.run
-    |> Bonsai.Private.perform graph
-  ;;
-
-  let fake_monitor_location =
-    { Source_code_position.pos_fname = "fake-monitor-location"
+  let create_location kind depth =
+    let prefix =
+      match kind with
+      | `State -> "State"
+      | `Watcher -> "Watcher"
+      | `Incr -> "Incremental"
+    in
+    { Source_code_position.pos_fname = [%string "%{prefix}-depth-%{depth#Int}-location"]
     ; pos_lnum = 0
     ; pos_bol = 0
     ; pos_cnum = 0
     }
   ;;
 
-  let%expect_test "basic free variables" =
+  let enable_computation_watcher ~watcher_queue computation graph =
+    Bonsai.Private.handle graph ~f:computation
+    |> Bonsai.Private.Enable_computation_watcher.run ~watcher_queue
+    |> Bonsai.Private.perform graph
+  ;;
+
+  let log_queue ?(show_actual_source_code_position = false) q =
+    Output_queue.process_queue
+      ~f:(fun node ->
+        "--------------------------------\n"
+        ^ Bonsai.Private.Computation_watcher.Node.to_string node
+        |> (fun value ->
+             if not show_actual_source_code_position
+             then Expect_test_helpers_core.hide_positions_in_string value
+             else value)
+        |> print_endline)
+      q
+  ;;
+
+  let%expect_test "merge config" =
+    let merge_config =
+      Bonsai.Private.Computation_watcher.Config.merge
+        { Bonsai.Private.Computation_watcher.Config.log_model_before = true
+        ; log_model_after = true
+        ; log_action = true
+        ; log_watcher_positions = true
+        ; log_dependency_definition_position = true
+        ; log_incr_info = true
+        ; label = None
+        }
+        { Bonsai.Private.Computation_watcher.Config.log_model_before = false
+        ; log_model_after = false
+        ; log_action = false
+        ; log_watcher_positions = false
+        ; log_incr_info = false
+        ; log_dependency_definition_position = false
+        ; label = Some "hi"
+        }
+    in
+    print_s [%sexp (merge_config : Bonsai.Private.Computation_watcher.Config.t)];
+    [%expect
+      {|
+      ((log_action                         true)
+       (log_model_before                   true)
+       (log_model_after                    true)
+       (log_watcher_positions              true)
+       (log_dependency_definition_position true)
+       (log_incr_info                      true)
+       (label (hi)))
+      |}];
+    let merge_config =
+      Bonsai.Private.Computation_watcher.Config.merge
+        { Bonsai.Private.Computation_watcher.Config.log_model_before = false
+        ; log_model_after = false
+        ; log_action = false
+        ; log_watcher_positions = false
+        ; log_incr_info = false
+        ; log_dependency_definition_position = false
+        ; label = Some "hi"
+        }
+        { Bonsai.Private.Computation_watcher.Config.log_model_before = true
+        ; log_model_after = true
+        ; log_action = true
+        ; log_watcher_positions = true
+        ; log_incr_info = true
+        ; log_dependency_definition_position = true
+        ; label = None
+        }
+    in
+    print_s [%sexp (merge_config : Bonsai.Private.Computation_watcher.Config.t)];
+    [%expect
+      {|
+      ((log_action                         true)
+       (log_model_before                   true)
+       (log_model_after                    true)
+       (log_watcher_positions              true)
+       (log_dependency_definition_position true)
+       (log_incr_info                      true)
+       (label ()))
+      |}];
+    let merge_config =
+      Bonsai.Private.Computation_watcher.Config.merge
+        { Bonsai.Private.Computation_watcher.Config.log_model_before = false
+        ; log_model_after = false
+        ; log_action = false
+        ; log_watcher_positions = false
+        ; log_incr_info = false
+        ; log_dependency_definition_position = false
+        ; label = Some "hi"
+        }
+        { Bonsai.Private.Computation_watcher.Config.log_model_before = false
+        ; log_model_after = false
+        ; log_action = false
+        ; log_watcher_positions = false
+        ; log_incr_info = false
+        ; log_dependency_definition_position = false
+        ; label = Some "bye"
+        }
+    in
+    print_s [%sexp (merge_config : Bonsai.Private.Computation_watcher.Config.t)];
+    [%expect
+      {|
+      ((log_action                         false)
+       (log_model_before                   false)
+       (log_model_after                    false)
+       (log_watcher_positions              false)
+       (log_dependency_definition_position false)
+       (log_incr_info                      false)
+       (label (bye)))
+      |}];
+    let merge_config =
+      Bonsai.Private.Computation_watcher.Config.merge
+        { Bonsai.Private.Computation_watcher.Config.log_model_before = true
+        ; log_model_after = true
+        ; log_action = true
+        ; log_watcher_positions = true
+        ; log_incr_info = true
+        ; log_dependency_definition_position = true
+        ; label = Some "y"
+        }
+        { Bonsai.Private.Computation_watcher.Config.log_model_before = true
+        ; log_model_after = true
+        ; log_action = true
+        ; log_watcher_positions = true
+        ; log_incr_info = true
+        ; log_dependency_definition_position = true
+        ; label = Some ""
+        }
+    in
+    print_s [%sexp (merge_config : Bonsai.Private.Computation_watcher.Config.t)];
+    [%expect
+      {|
+      ((log_action                         true)
+       (log_model_before                   true)
+       (log_model_after                    true)
+       (log_watcher_positions              true)
+       (log_dependency_definition_position true)
+       (log_incr_info                      true)
+       (label ("")))
+      |}]
+  ;;
+
+  let%expect_test "log_model_action_monitor" =
+    let model_before = 1
+    and model_after = 100 in
+    let log_fn =
+      Bonsai.Private.Computation_watcher.For_testing.log_model_action_monitor
+        ~sexp_of_model:Int.sexp_of_t
+        ~model_before
+        ~model_after
+    in
+    let log_string =
+      log_fn
+        ~action:(Some `Test)
+        ~config:
+          { log_action = true
+          ; log_model_before = true
+          ; log_model_after = true
+          ; log_watcher_positions = true
+          ; log_incr_info = true
+          ; log_dependency_definition_position = false
+          ; label = Some "test"
+          }
+        ~info_string_prefix:"hi"
+        ()
+    in
+    print_endline log_string;
+    [%expect {| hi(model_before 1) (action <opaque>) -> (model_after 100) |}];
+    let log_string =
+      log_fn
+        ~action:(Some `Test)
+        ~sexp_of_action:(fun _action -> [%message "sexp'd action"])
+        ~config:
+          { log_action = true
+          ; log_model_before = true
+          ; log_model_after = true
+          ; log_watcher_positions = true
+          ; log_incr_info = true
+          ; log_dependency_definition_position = true
+          ; label = None
+          }
+        ()
+    in
+    print_endline log_string;
+    [%expect {| (model_before 1) (action "sexp'd action") -> (model_after 100) |}];
+    let log_string =
+      log_fn
+        ~action:(Some `Test)
+        ~sexp_of_action:(fun _action -> [%message "sexp'd action"])
+        ~config:
+          { log_action = true
+          ; log_model_before = true
+          ; log_model_after = true
+          ; log_watcher_positions = false
+          ; log_incr_info = true
+          ; log_dependency_definition_position = false
+          ; label = Some "Test2"
+          }
+        ()
+    in
+    print_endline log_string;
+    [%expect {| (model_before 1) (action "sexp'd action") -> (model_after 100) |}];
+    let log_string =
+      log_fn
+        ~action:(Some `Test)
+        ~sexp_of_action:(fun _action -> [%message "sexp'd action"])
+        ~config:
+          { log_action = true
+          ; log_model_before = true
+          ; log_model_after = true
+          ; log_watcher_positions = true
+          ; log_incr_info = true
+          ; log_dependency_definition_position = false
+          ; label = Some "Test2"
+          }
+        ()
+    in
+    print_endline log_string;
+    [%expect {| (model_before 1) (action "sexp'd action") -> (model_after 100) |}];
+    let log_string =
+      log_fn
+        ~action:(Some `Test)
+        ~sexp_of_action:(fun _action -> [%message "sexp'd action"])
+        ~config:
+          { log_action = true
+          ; log_model_before = true
+          ; log_model_after = true
+          ; log_watcher_positions = false
+          ; log_incr_info = true
+          ; log_dependency_definition_position = true
+          ; label = Some "Test2"
+          }
+        ()
+    in
+    print_endline log_string;
+    [%expect {| (model_before 1) (action "sexp'd action") -> (model_after 100) |}]
+  ;;
+
+  let%expect_test "make sure separator exists if either old_model or action exist + \
+                   new_model"
+    =
+    let model_before = 1
+    and model_after = 100 in
+    let log_fn =
+      Bonsai.Private.Computation_watcher.For_testing.log_model_action_monitor
+        ~sexp_of_model:Int.sexp_of_t
+        ~model_before
+        ~model_after
+    in
+    let log_string =
+      log_fn
+        ~action:(Some `Test)
+        ~sexp_of_action:(fun _action -> [%message "sexp'd action"])
+        ~config:
+          { log_action = false
+          ; log_model_before = true
+          ; log_model_after = true
+          ; log_watcher_positions = true
+          ; log_incr_info = true
+          ; log_dependency_definition_position = true
+          ; label = Some "Test2"
+          }
+        ()
+    in
+    print_endline log_string;
+    [%expect {| (model_before 1) -> (model_after 100) |}];
+    let log_string =
+      log_fn
+        ~action:(Some `Test)
+        ~sexp_of_action:(fun _action -> [%message "sexp'd action"])
+        ~config:
+          { log_action = true
+          ; log_model_before = false
+          ; log_model_after = true
+          ; log_watcher_positions = true
+          ; log_incr_info = true
+          ; log_dependency_definition_position = true
+          ; label = Some "Test2"
+          }
+        ()
+    in
+    print_endline log_string;
+    [%expect {| (action "sexp'd action") -> (model_after 100) |}];
+    let log_string =
+      log_fn
+        ~action:None
+        ~sexp_of_action:(fun _action -> [%message "sexp'd action"])
+        ~config:
+          { log_action = true
+          ; log_model_before = true
+          ; log_model_after = true
+          ; log_watcher_positions = true
+          ; log_incr_info = true
+          ; log_dependency_definition_position = true
+          ; label = Some "Test2"
+          }
+        ()
+    in
+    print_endline log_string;
+    [%expect {| (model_before 1) -> (model_after 100) |}]
+  ;;
+
+  let%expect_test "make sure separator disappears whenever no before/action or after" =
+    let model_before = 1
+    and model_after = 100 in
+    let log_fn =
+      Computation_watcher.For_testing.log_model_action_monitor
+        ~sexp_of_model:Int.sexp_of_t
+        ~model_before
+        ~model_after
+    in
+    let log_string =
+      log_fn
+        ~action:(Some `Test)
+        ~sexp_of_action:(fun _action -> [%message "sexp'd action"])
+        ~config:
+          { log_action = false
+          ; log_model_before = false
+          ; log_model_after = true
+          ; log_watcher_positions = true
+          ; log_incr_info = false
+          ; log_dependency_definition_position = true
+          ; label = Some "Test2"
+          }
+        ()
+    in
+    print_endline log_string;
+    [%expect {| (model_after 100) |}];
+    let log_string =
+      log_fn
+        ~action:(Some `Test)
+        ~sexp_of_action:(fun _action -> [%message "sexp'd action"])
+        ~config:
+          { log_action = true
+          ; log_model_before = false
+          ; log_model_after = false
+          ; log_watcher_positions = true
+          ; log_incr_info = false
+          ; log_dependency_definition_position = true
+          ; label = Some "Test2"
+          }
+        ()
+    in
+    print_endline log_string;
+    [%expect {| (action "sexp'd action") |}];
+    let log_string =
+      log_fn
+        ~action:(Some `Test)
+        ~sexp_of_action:(fun _action -> [%message "sexp'd action"])
+        ~config:
+          { log_action = false
+          ; log_model_before = true
+          ; log_model_after = false
+          ; log_watcher_positions = true
+          ; log_incr_info = true
+          ; log_dependency_definition_position = true
+          ; label = Some "Test2"
+          }
+        ()
+    in
+    print_endline log_string;
+    [%expect {| (model_before 1) |}];
+    let log_string =
+      log_fn
+        ~action:(Some `Test)
+        ~sexp_of_action:(fun _action -> [%message "sexp'd action"])
+        ~config:
+          { log_action = true
+          ; log_model_before = true
+          ; log_model_after = false
+          ; log_watcher_positions = true
+          ; log_incr_info = true
+          ; log_dependency_definition_position = true
+          ; label = Some "Test2"
+          }
+        ()
+    in
+    print_endline log_string;
+    [%expect {| (model_before 1) (action "sexp'd action") |}];
+    let log_string =
+      log_fn
+        ~action:(Some `Test)
+        ~sexp_of_action:(fun _action -> [%message "sexp'd action"])
+        ~config:
+          { log_action = false
+          ; log_model_before = false
+          ; log_model_after = false
+          ; log_watcher_positions = false
+          ; log_incr_info = false
+          ; log_dependency_definition_position = false
+          ; label = Some "Test2"
+          }
+        ()
+    in
+    print_endline log_string;
+    (* Should be empty *)
+    [%expect {| |}]
+  ;;
+
+  let%expect_test "free variable is bonsai var" =
+    let watcher_queue = Queue.create () in
+    let free_var = Bonsai.Expert.Var.create 3 in
     let component graph =
-      let a, set_a = Bonsai.state 0 graph in
-      Bonsai.Debug.monitor_free_variables
-        ~here:fake_monitor_location
+      let free_var_value =
+        Bonsai.Expert.Var.value ~here:(create_location `Incr 0) free_var
+      in
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        graph
+        ~f:(fun _graph ->
+          let%arr _ = free_var_value in
+          ( Effect.of_sync_fun (fun value -> Bonsai.Expert.Var.set free_var value)
+          , fun _ -> Effect.Ignore ))
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    (* This is to be expected since this logs whenever the value is regenerated, which
+         includes the first time *)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 100 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "test remove dependency definition position" =
+    let watcher_queue = Queue.create () in
+    let free_var = Bonsai.Expert.Var.create 3 in
+    let component graph =
+      let free_var_value =
+        Bonsai.Expert.Var.value ~here:(create_location `Incr 0) free_var
+      in
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        ~log_dependency_definition_position:false
+        graph
+        ~f:(fun _graph ->
+          let%arr _ = free_var_value in
+          ( Effect.of_sync_fun (fun value -> Bonsai.Expert.Var.set free_var value)
+          , fun _ -> Effect.Ignore ))
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    (* This is to be expected since this logs whenever the value is regenerated, which
+         includes the first time *)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "test remove watcher positions" =
+    let watcher_queue = Queue.create () in
+    let free_var = Bonsai.Expert.Var.create 3 in
+    let component graph =
+      let free_var_value =
+        Bonsai.Expert.Var.value ~here:(create_location `Incr 0) free_var
+      in
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        ~log_watcher_positions:false
+        graph
+        ~f:(fun _graph ->
+          let%arr _ = free_var_value in
+          ( Effect.of_sync_fun (fun value -> Bonsai.Expert.Var.set free_var value)
+          , fun _ -> Effect.Ignore ))
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    (* This is to be expected since this logs whenever the value is regenerated, which
+         includes the first time *)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "[State test] should only print one line, not two separate lines" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        ~log_dependency_definition_position:true
+        ~log_watcher_positions:true
         graph
         ~f:(fun graph ->
-          let b, set_b = Bonsai.state 0 graph in
+          let a, set_a = Bonsai.state ~here:(create_location `State 0) 0 graph in
+          let thing =
+            let%arr a in
+            a
+          in
+          let thing2 =
+            let%arr a in
+            a
+          in
+          let%arr _ = thing
+          and _ = thing2
+          and set_a in
+          set_a, fun _ -> Effect.Ignore)
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    Handle.show handle;
+    log_queue ~show_actual_source_code_position:false watcher_queue;
+    [%expect {| |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    (* Every update to `A should only print ONE entry. This should also show the
+         [Depended on at] line *)
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-0-location:LINE:COL]
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "[Named test] two sibling watchers should only print one line, not two \
+                   separate lines"
+    =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      let free_var_value, set_free_var_value =
+        Bonsai.state ~here:(create_location `State 0) 0 graph
+      in
+      let unwatched =
+        let%arr free_var_value in
+        free_var_value, fun _ -> Effect.Ignore
+      in
+      let watched =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 0)
+          ~log_dependency_definition_position:true
+          graph
+          ~f:(fun _graph ->
+            let thing =
+              let%arr free_var_value in
+              free_var_value
+            in
+            let%arr thing in
+            thing, fun _ -> Effect.Ignore)
+      in
+      let watched2 =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 1)
+          ~log_dependency_definition_position:true
+          ~f:(fun _graph ->
+            let thing =
+              let%arr free_var_value in
+              free_var_value
+            in
+            let%arr thing in
+            thing, fun _ -> Effect.Ignore)
+          graph
+      in
+      let%arr _ = watched
+      and _ = watched2
+      and _, b = unwatched
+      and set_free_var_value in
+      set_free_var_value, b
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    Handle.show handle;
+    log_queue ~show_actual_source_code_position:false watcher_queue;
+    (* Every update to `A as well as the initial print should only print ONE entry *)
+    [%expect
+      {|
+      --------------------------------
+      2 watched computations updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+       - Watcher-depth-1-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "[Incremental test] two sibling watchers should only print one line, \
+                   not two separate lines"
+    =
+    let watcher_queue = Queue.create () in
+    let free_var = Bonsai.Expert.Var.create 3 in
+    let component graph =
+      let free_var_value =
+        Bonsai.Expert.Var.value ~here:(create_location `Incr 0) free_var
+      in
+      let unwatched =
+        let%arr free_var_value in
+        free_var_value, fun _ -> Effect.Ignore
+      in
+      let watched =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 0)
+          ~log_dependency_definition_position:true
+          graph
+          ~f:(fun _graph ->
+            let thing =
+              let%arr free_var_value in
+              free_var_value
+            in
+            let%arr _ = thing in
+            ( Effect.of_sync_fun (fun value -> Bonsai.Expert.Var.set free_var value)
+            , fun _ -> Effect.Ignore ))
+      in
+      let watched2 =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 1)
+          ~log_dependency_definition_position:true
+          graph
+          ~f:(fun _graph ->
+            let thing =
+              let%arr free_var_value in
+              free_var_value
+            in
+            let%arr _ = thing in
+            ( Effect.of_sync_fun (fun value -> Bonsai.Expert.Var.set free_var value)
+            , fun _ -> Effect.Ignore ))
+      in
+      let%arr a, _ = watched
+      and _ = watched2
+      and _, b = unwatched in
+      a, b
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    Handle.show handle;
+    log_queue ~show_actual_source_code_position:false watcher_queue;
+    (* Every update to `A as well as the initial print should only print ONE entry *)
+    [%expect
+      {|
+      --------------------------------
+      2 watched computations updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+       - Watcher-depth-1-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "[Incremental test] should only print one line, not two separate lines" =
+    let watcher_queue = Queue.create () in
+    let free_var = Bonsai.Expert.Var.create 3 in
+    let component graph =
+      let free_var_value =
+        Bonsai.Expert.Var.value ~here:(create_location `Incr 0) free_var
+      in
+      let unwatched =
+        let%arr free_var_value in
+        free_var_value, fun _ -> Effect.Ignore
+      in
+      let watched =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 0)
+          ~log_dependency_definition_position:true
+          ~log_watcher_positions:false
+          graph
+          ~f:(fun _graph ->
+            let thing =
+              let%arr free_var_value in
+              free_var_value
+            in
+            let thing2 =
+              let%arr free_var_value in
+              free_var_value
+            in
+            let%arr _ = thing
+            and _ = thing2 in
+            ( Effect.of_sync_fun (fun value -> Bonsai.Expert.Var.set free_var value)
+            , fun _ -> Effect.Ignore ))
+      in
+      let%arr a, _ = watched
+      and _, b = unwatched in
+      a, b
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    Handle.show handle;
+    log_queue ~show_actual_source_code_position:false watcher_queue;
+    (* Every update to `A as well as the initial print should only print ONE entry *)
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "test remove watcher positions and dependency positions" =
+    let watcher_queue = Queue.create () in
+    let free_var = Bonsai.Expert.Var.create 3 in
+    let component graph =
+      let free_var_value =
+        Bonsai.Expert.Var.value ~here:(create_location `Incr 0) free_var
+      in
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        ~log_dependency_definition_position:true
+        ~log_watcher_positions:false
+        graph
+        ~f:(fun graph ->
+          let thing =
+            let%arr free_var_value in
+            free_var_value
+          in
+          let thing2 =
+            Bonsai.Debug.watch_computation
+              ~here:(create_location `Watcher 1)
+              ~f:(fun _graph ->
+                let%arr free_var_value in
+                free_var_value)
+              graph
+          in
+          let%arr _ = thing
+          and _ = thing2 in
+          ( Effect.of_sync_fun (fun value -> Bonsai.Expert.Var.set free_var value)
+          , fun _ -> Effect.Ignore ))
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    (* This is to be expected since this logs whenever the value is regenerated, which
+         includes the first time *)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      2 watched computations updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+       - Watcher-depth-1-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      2 watched computations updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+       - Watcher-depth-1-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "test remove watcher positions and dependency positions and details" =
+    let watcher_queue = Queue.create () in
+    let free_var = Bonsai.Expert.Var.create 3 in
+    let free_var_2 = Bonsai.Expert.Var.create 0 in
+    let component graph =
+      let free_var_value =
+        Bonsai.Expert.Var.value ~here:(create_location `Incr 0) free_var
+      in
+      let free_var_2_value =
+        Bonsai.Expert.Var.value ~here:(create_location `Incr 1) free_var_2
+      in
+      let a =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 0)
+          ~label:"Outer"
+          ~log_incr_info:false
+          ~log_dependency_definition_position:false
+          ~log_watcher_positions:false
+          graph
+          ~f:(fun graph ->
+            let inner =
+              Bonsai.Debug.watch_computation
+                ~label:"Inner"
+                ~log_incr_info:false
+                ~log_dependency_definition_position:false
+                ~log_watcher_positions:false
+                ~here:(create_location `Watcher 1)
+                ~f:(fun _graph ->
+                  let%arr free_var_value in
+                  free_var_value)
+                graph
+            in
+            let%arr _ = inner in
+            Effect.of_sync_fun (fun value -> Bonsai.Expert.Var.set free_var value))
+      in
+      let b =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 2)
+          ~log_incr_info:false
+          ~log_dependency_definition_position:false
+          ~log_watcher_positions:false
+          ~f:(fun _graph ->
+            let%arr _ = free_var_2_value in
+            Effect.of_sync_fun (fun value -> Bonsai.Expert.Var.set free_var_2 value))
+          graph
+      in
+      let%arr a and b in
+      a, b
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    (* This is to be expected since this logs whenever the value is regenerated, which
+         includes the first time *)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      --------------------------------
+      2 watched computations updated due to Incremental node
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      2 watched computations updated due to Incremental node
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `B 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "three watchers" =
+    let watcher_queue = Queue.create () in
+    let free_var = Bonsai.Expert.Var.create 3 in
+    let free_var_2 = Bonsai.Expert.Var.create 0 in
+    let component graph =
+      let free_var_value =
+        Bonsai.Expert.Var.value ~here:(create_location `Incr 0) free_var
+      in
+      let free_var_2_value =
+        Bonsai.Expert.Var.value ~here:(create_location `Incr 1) free_var_2
+      in
+      let free_var_wrapper =
+        let%arr free_var_value in
+        free_var_value
+      in
+      let a =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 0)
+          ~label:"Outer"
+          graph
+          ~f:(fun graph ->
+            let inner =
+              Bonsai.Debug.watch_computation
+                ~label:"Inner"
+                ~here:(create_location `Watcher 1)
+                ~f:(fun _graph ->
+                  let%arr free_var_value and free_var_wrapper in
+                  free_var_value + free_var_wrapper)
+                graph
+            in
+            let%arr _ = inner in
+            Effect.of_sync_fun (fun value -> Bonsai.Expert.Var.set free_var value))
+      in
+      let b =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 2)
+          ~f:(fun _graph ->
+            let%arr _ = free_var_2_value in
+            Effect.of_sync_fun (fun value -> Bonsai.Expert.Var.set free_var_2 value))
+          graph
+      in
+      let%arr a and b in
+      a, b
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    (* This is to be expected since this logs whenever the value is regenerated, which
+         includes the first time *)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-1-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-2-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      --------------------------------
+      2 watched computations updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - [Outer] Watcher-depth-0-location:LINE:COL
+       - [Inner] Watcher-depth-1-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      --------------------------------
+      2 watched computations updated due to Named node at [lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - [Outer] Watcher-depth-0-location:LINE:COL
+       - [Inner] Watcher-depth-1-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 100 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      2 watched computations updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - [Outer] Watcher-depth-0-location:LINE:COL
+       - [Inner] Watcher-depth-1-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      --------------------------------
+      2 watched computations updated due to Named node at [lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - [Outer] Watcher-depth-0-location:LINE:COL
+       - [Inner] Watcher-depth-1-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      2 watched computations updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - [Outer] Watcher-depth-0-location:LINE:COL
+       - [Inner] Watcher-depth-1-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      --------------------------------
+      2 watched computations updated due to Named node at [lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - [Outer] Watcher-depth-0-location:LINE:COL
+       - [Inner] Watcher-depth-1-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `B 20 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-1-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-2-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "no free variables but has state (one out, one in)" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      let a, set_a = Bonsai.state 0 ~here:(create_location `State 0) graph in
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        graph
+        ~f:(fun graph ->
+          let b, set_b = Bonsai.state ~here:(create_location `State 1) 0 graph in
           let%arr _ = a
           and _ = b
           and set_a
@@ -104,43 +1249,1049 @@ module%test [@name "free vars"] _ = struct
           set_a, set_b)
     in
     let handle =
-      Handle.create (module Result_spec) (enable_free_variable_monitor component)
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
     in
-    (* two nodes became necessary: [a] and [set_a] *)
+    log_queue watcher_queue;
     [%expect
       {|
-      ("node updated" (monitor fake-monitor-location:0:0) (incr_info ()))
-      ("node updated" (monitor fake-monitor-location:0:0) (incr_info ()))
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
       |}];
     Handle.do_actions handle [ `A 1 ];
     Handle.show handle;
-    [%expect {| ("node updated" (monitor fake-monitor-location:0:0) (incr_info ())) |}];
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
     Handle.do_actions handle [ `B 1 ];
     Handle.show handle;
-    [%expect {| |}];
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-1-location:LINE:COL]
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
     Handle.do_actions handle [ `A 2 ];
     Handle.show handle;
-    [%expect {| ("node updated" (monitor fake-monitor-location:0:0) (incr_info ())) |}]
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
   ;;
 
-  let%expect_test "value isn't used" =
+  let%expect_test "no free variables but has state" =
+    let watcher_queue = Queue.create () in
     let component graph =
-      let _, set_a = Bonsai.state 0 graph in
-      Bonsai.Debug.monitor_free_variables
-        ~here:fake_monitor_location
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        ~label:"Hello"
         graph
         ~f:(fun graph ->
-          let b, set_b = Bonsai.state 0 graph in
+          let b, set_b = Bonsai.state ~here:(create_location `State 0) 0 graph in
           let%arr _ = b
+          and set_b in
+          (fun (_ : int) -> Effect.Ignore), set_b)
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    log_queue watcher_queue;
+    [%expect {| |}];
+    Handle.do_actions handle [ `A 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect {| |}];
+    Handle.do_actions handle [ `B 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-0-location:LINE:COL]
+
+      Watchers:
+       - [Hello] Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect {| |}]
+  ;;
+
+  let%expect_test "log value outer is false" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        ~log_model_before:false
+        ~log_model_after:false
+        ~log_action:false
+        ~log_watcher_positions:false
+        ~log_incr_info:false
+        ~log_dependency_definition_position:false
+        graph
+        ~f:(fun graph ->
+          let a, set_a =
+            Bonsai.state
+              ~here:(create_location `State 0)
+              ~sexp_of_model:Int.sexp_of_t
+              0
+              graph
+          in
+          let inner_computation =
+            Bonsai.Debug.watch_computation
+              ~here:(create_location `Watcher 1)
+              ~log_model_before:true
+              ~log_model_after:true
+              ~log_action:true
+              ~log_watcher_positions:true
+              ~log_incr_info:true
+              ~log_dependency_definition_position:true
+              ~f:(fun graph ->
+                let b, set_b =
+                  Bonsai.state_machine0
+                    ~here:(create_location `State 1)
+                    ~sexp_of_model:String.sexp_of_t
+                    ~sexp_of_action:Int.sexp_of_t
+                    ~default_model:"null"
+                    ~apply_action:(fun _context _model -> function
+                      | 0 -> "null"
+                      | other -> [%string "inner %{other#Int}"])
+                    graph
+                in
+                Bonsai.both b set_b)
+              graph
+          in
+          let%arr _ = a
+          and set_a
+          and _, set_b = inner_computation in
+          set_a, set_b)
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    log_queue watcher_queue;
+    [%expect {| |}];
+    Handle.do_actions handle [ `A 1 ];
+    Handle.show handle;
+    (* This is the outer computation watcher. This one has all of the values set to
+         false and should not log anything other than the fact that a state machine updated *)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0
+      |}];
+    Handle.do_actions handle [ `B 1 ];
+    Handle.show handle;
+    (* We should expect the inner one to log everything *)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      2 watched computations updated due to State_machine0 at [State-depth-1-location:LINE:COL]
+
+      Details: (model_before null) (action 1) -> (model_after "inner 1")
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+       - Watcher-depth-1-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0
+      |}]
+  ;;
+
+  let%expect_test "log values are merged within nested watchers" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        ~log_model_before:true
+        ~log_model_after:true
+        ~log_action:true
+        ~log_watcher_positions:true
+        ~log_incr_info:true
+        ~log_dependency_definition_position:true
+        graph
+        ~f:(fun graph ->
+          let a, set_a =
+            Bonsai.state
+              ~here:(create_location `State 0)
+              ~sexp_of_model:Int.sexp_of_t
+              0
+              graph
+          in
+          let inner_computation =
+            Bonsai.Debug.watch_computation
+              ~here:(create_location `Watcher 1)
+              ~log_model_before:false
+              ~log_model_after:false
+              ~log_action:false
+              ~log_watcher_positions:false
+              ~log_incr_info:false
+              ~log_dependency_definition_position:false
+              ~f:(fun graph ->
+                let b, set_b =
+                  Bonsai.state_machine0
+                    ~here:(create_location `State 1)
+                    ~sexp_of_model:String.sexp_of_t
+                    ~sexp_of_action:Int.sexp_of_t
+                    ~default_model:"null"
+                    ~apply_action:(fun _context _model -> function
+                      | 0 -> "null"
+                      | other -> [%string "inner %{other#Int}"])
+                    graph
+                in
+                Bonsai.both b set_b)
+              graph
+          in
+          let%arr _ = a
+          and set_a
+          and _, set_b = inner_computation in
+          set_a, set_b)
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    log_queue watcher_queue;
+    [%expect {| |}];
+    Handle.do_actions handle [ `A 1 ];
+    Handle.show handle;
+    (* This is the outer computation watcher. This one has all of the values set to true
+         and should cause the inner one to log everything including the action*)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-0-location:LINE:COL]
+
+      Details: (model_before 0) (action 1) -> (model_after 1)
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `B 1 ];
+    Handle.show handle;
+    (* We should expect the inner one to log everything as well *)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      2 watched computations updated due to State_machine0 at [State-depth-1-location:LINE:COL]
+
+      Details: (model_before null) (action 1) -> (model_after "inner 1")
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+       - Watcher-depth-1-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-0-location:LINE:COL]
+
+      Details: (model_before 1) (action 2) -> (model_after 2)
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "no free variables but has state DETAILED" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        ~log_model_before:true
+        ~log_model_after:true
+        ~log_action:true
+        graph
+        ~f:(fun graph ->
+          let b, set_b =
+            Bonsai.state
+              ~here:(create_location `State 0)
+              ~sexp_of_model:Int.sexp_of_t
+              0
+              graph
+          in
+          let%arr _ = b
+          and set_b in
+          (fun (_ : int) -> Effect.Ignore), set_b)
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    log_queue watcher_queue;
+    [%expect {| |}];
+    Handle.do_actions handle [ `A 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect {| |}];
+    Handle.do_actions handle [ `B 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-0-location:LINE:COL]
+
+      Details: (model_before 0) (action 1) -> (model_after 1)
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect {| |}]
+  ;;
+
+  let%expect_test "state0 log on reset" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      let set_b, reset =
+        Bonsai.with_model_resetter
+          ~here:(create_location `State 1)
+          ~f:(fun graph ->
+            Bonsai.Debug.watch_computation
+              ~here:(create_location `Watcher 0)
+              graph
+              ~f:(fun graph ->
+                let b, set_b =
+                  Bonsai.state
+                    ~here:(create_location `State 0)
+                    ~sexp_of_model:Int.sexp_of_t
+                    0
+                    graph
+                in
+                let%arr _ = b
+                and set_b in
+                set_b))
+          graph
+      in
+      let%arr set_b and reset in
+      set_b, fun (_ : int) -> reset
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    log_queue watcher_queue;
+    [%expect {| |}];
+    Handle.do_actions handle [ `A 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-0-location:LINE:COL]
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `B 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-0-location:LINE:COL]
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-0-location:LINE:COL]
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "state0 log on reset DETAILED" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      let set_b, reset =
+        Bonsai.with_model_resetter
+          ~here:(create_location `State 0)
+          ~f:(fun graph ->
+            Bonsai.Debug.watch_computation
+              ~here:(create_location `Watcher 0)
+              ~log_model_before:true
+              ~log_model_after:true
+              ~log_action:true
+              graph
+              ~f:(fun graph ->
+                let b, set_b =
+                  Bonsai.state
+                    ~here:(create_location `State 1)
+                    ~sexp_of_model:Int.sexp_of_t
+                    0
+                    graph
+                in
+                let%arr _ = b
+                and set_b in
+                set_b))
+          graph
+      in
+      let%arr set_b and reset in
+      set_b, fun (_ : int) -> reset
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    log_queue watcher_queue;
+    [%expect {| |}];
+    Handle.do_actions handle [ `A 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-1-location:LINE:COL]
+
+      Details: (model_before 0) (action 1) -> (model_after 1)
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `B 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-1-location:LINE:COL]
+
+      Details: (model_before 1) -> (model_after 0)
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-1-location:LINE:COL]
+
+      Details: (model_before 0) (action 2) -> (model_after 2)
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "Leaf1 only free variable is input" =
+    let watcher_queue = Queue.create () in
+    let input_var = Bonsai.Expert.Var.create 0 in
+    let input_var_value =
+      Bonsai.Expert.Var.value ~here:(create_location `Incr 0) input_var
+    in
+    let component graph =
+      let input_value = Bonsai.Proc.read input_var_value graph in
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        graph
+        ~f:(fun graph ->
+          let b, set_b =
+            Bonsai.state_machine1
+              ~here:(create_location `State 0)
+              ~sexp_of_model:Int.sexp_of_t
+              ~sexp_of_action:Int.sexp_of_t
+              ~default_model:0
+              ~apply_action:(fun _context input model new_model ->
+                match input with
+                | Active num -> num + new_model
+                | Inactive -> model)
+              input_value
+              graph
+          in
+          let%arr _ = b
+          and set_b in
+          Effect.of_sync_fun (Bonsai.Expert.Var.set input_var), set_b)
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `B 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine1 at [State-depth-0-location:LINE:COL]
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `B 100 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine1 at [State-depth-0-location:LINE:COL]
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "reset logs weird equal function" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      let set_a, reset_a =
+        Bonsai.with_model_resetter
+          ~here:(create_location `State 0)
+          ~f:(fun graph ->
+            Bonsai.Debug.watch_computation
+              ~here:(create_location `Watcher 0)
+              ~log_model_before:true
+              ~log_model_after:true
+              ~log_action:true
+              graph
+              ~f:(fun graph ->
+                let b, set_b =
+                  Bonsai.state
+                    ~here:(create_location `State 1)
+                    ~sexp_of_model:Int.sexp_of_t
+                    ~equal:(fun _a _b -> false)
+                    0
+                    graph
+                in
+                let%arr _ = b
+                and set_b in
+                set_b))
+          graph
+      in
+      let set_b, reset =
+        Bonsai.with_model_resetter
+          ~here:(create_location `State 0)
+          ~f:(fun graph ->
+            Bonsai.Debug.watch_computation
+              ~here:(create_location `Watcher 0)
+              ~log_model_before:true
+              ~log_model_after:true
+              ~log_action:true
+              graph
+              ~f:(fun graph ->
+                let b, set_b =
+                  Bonsai.state
+                    ~here:(create_location `State 1)
+                    ~sexp_of_model:Int.sexp_of_t
+                    0
+                    graph
+                in
+                let%arr _ = b
+                and set_b in
+                set_b))
+          graph
+      in
+      let%arr _ = set_b
+      and reset
+      and _ = set_a
+      and reset_a in
+      (fun (_ : int) -> reset_a), fun (_ : int) -> reset
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    log_queue watcher_queue;
+    [%expect {| |}];
+    (* Should log *)
+    Handle.do_actions handle [ `A 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-1-location:LINE:COL]
+
+      Details: (model_before 0) -> (model_after 0)
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    (* Shouldn't log *)
+    Handle.do_actions handle [ `B 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect {| |}]
+  ;;
+
+  let%expect_test "State logs for weird equal function" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        ~log_model_before:true
+        ~log_model_after:true
+        ~log_action:true
+        graph
+        ~f:(fun graph ->
+          let a, set_a =
+            Bonsai.state_machine0
+              ~here:(create_location `State 0)
+              ~sexp_of_model:Int.sexp_of_t
+              ~sexp_of_action:Int.sexp_of_t
+              ~default_model:0
+              ~apply_action:(fun _context model new_model -> model + new_model)
+              graph
+          in
+          let b, set_b =
+            Bonsai.state_machine0
+              ~here:(create_location `State 0)
+              ~sexp_of_model:Int.sexp_of_t
+              ~sexp_of_action:Int.sexp_of_t
+              ~equal:(fun _a _b -> false)
+              ~default_model:0
+              ~apply_action:(fun _context model new_model -> model + new_model)
+              graph
+          in
+          let%arr _ = b
+          and _ = a
           and set_a
           and set_b in
           set_a, set_b)
     in
     let handle =
-      Handle.create (module Result_spec) (enable_free_variable_monitor component)
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
     in
-    (* we still depend on [set_a] so something will be printed initially *)
-    [%expect {| ("node updated" (monitor fake-monitor-location:0:0) (incr_info ())) |}];
+    log_queue watcher_queue;
+    [%expect {| |}];
+    (* Set to same value, shouldn't log *)
+    Handle.do_actions handle [ `A 0 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect {| |}];
+    (* Set to same value, should log *)
+    Handle.do_actions handle [ `B 0 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect {| |}]
+  ;;
+
+  let%expect_test "Leaf1 only free variable is input DETAILED" =
+    let watcher_queue = Queue.create () in
+    let input_var = Bonsai.Expert.Var.create 0 in
+    let input_var_value =
+      Bonsai.Expert.Var.value ~here:(create_location `Incr 0) input_var
+    in
+    let component graph =
+      let input_value = Bonsai.Proc.read input_var_value graph in
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        ~log_model_before:true
+        ~log_model_after:true
+        ~log_action:true
+        graph
+        ~f:(fun graph ->
+          let b, set_b =
+            Bonsai.state_machine1
+              ~here:(create_location `State 0)
+              ~sexp_of_model:Int.sexp_of_t
+              ~sexp_of_action:Int.sexp_of_t
+              ~default_model:0
+              ~apply_action:(fun _context input model new_model ->
+                match input with
+                | Active num -> num + new_model
+                | Inactive -> model)
+              input_value
+              graph
+          in
+          let%arr _ = b
+          and set_b in
+          Effect.of_sync_fun (Bonsai.Expert.Var.set input_var), set_b)
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `B 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine1 at [State-depth-0-location:LINE:COL]
+
+      Details: (model_before 0) (action 1) -> (model_after 1)
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `B 100 ];
+    Handle.show handle;
+    (* The value after should be 102 since we set the input_var to 2 and now we're setting
+         the state to 100
+    *)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine1 at [State-depth-0-location:LINE:COL]
+
+      Details: (model_before 1) (action 100) -> (model_after 102)
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "wrap state" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        ~log_model_before:true
+        ~log_model_after:true
+        ~log_action:true
+        graph
+        ~f:(fun graph ->
+          let computation_to_wrap graph =
+            Bonsai.state
+              ~here:(create_location `State 0)
+              ~sexp_of_model:Int.sexp_of_t
+              0
+              graph
+          in
+          let%arr (_, set_wrapped), (_, set_inner) =
+            Bonsai.wrap
+              ~here:(create_location `State 1)
+              ~sexp_of_model:Int.sexp_of_t
+              ~default_model:10
+              ~apply_action:
+                (fun
+                  _ ((_, _set_wrapped), (inner, _set_inner)) _model value ->
+                inner + value)
+              ~f:(fun model inject graph ->
+                let state, set_state = computation_to_wrap graph in
+                let%arr model and state and set_state and inject in
+                let wrapped = model, inject in
+                let inner = state, set_state in
+                wrapped, inner)
+              graph
+          in
+          set_inner, set_wrapped)
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    log_queue watcher_queue;
+    (* There should be no lines that start with `BUG` *)
+    [%expect {| |}];
+    Handle.do_actions handle [ `B 10 ];
+    Handle.show handle;
+    (* Should be 0 + 10 *)
+    log_queue watcher_queue;
+    [%expect {| |}];
+    (* Only sets inner state, has no impact on current wrapped state *)
+    Handle.do_actions handle [ `A 7 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-0-location:LINE:COL]
+
+      Details: (model_before 0) (action 7) -> (model_after 7)
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `B 20 ];
+    Handle.show handle;
+    (* Should be 20 + 7 *)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Wrap node at [State-depth-1-location:LINE:COL]
+
+      Details: (model_before 10) (action <opaque>) -> (model_after 27)
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "watch assoc" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      let from_outside, set_from_outside =
+        Bonsai.state ~here:(create_location `State 3) 0 graph
+      in
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        graph
+        ~f:(fun graph ->
+          let assoced =
+            Bonsai.assoc
+              (module Int)
+              (opaque_const_value (Int.Map.of_alist_exn [ 0, (); 1, () ]))
+              graph
+              ~f:(fun key data _graph ->
+                let%arr _key = key
+                and () = data
+                and _foo = from_outside in
+                ())
+          in
+          let%arr set_from_outside
+          and _ = assoced in
+          set_from_outside, fun _ -> Effect.Ignore)
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    [%expect {| |}];
+    Handle.do_actions handle [ `A 1 ];
+    Handle.show handle;
+    [%expect {| |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    [%expect {| |}]
+  ;;
+
+  let%expect_test "basic free variables" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      let a, set_a = Bonsai.state ~here:(create_location `State 0) 0 graph in
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        graph
+        ~f:(fun graph ->
+          let b, set_b = Bonsai.state ~here:(create_location `State 1) 0 graph in
+          let%arr _ = a
+          and _ = b
+          and set_a
+          and set_b in
+          set_a, set_b)
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `B 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-1-location:LINE:COL]
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "basic free variables - but not turned on!" =
+    let component graph =
+      let a, set_a = Bonsai.state ~here:(create_location `State 0) 0 graph in
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        graph
+        ~f:(fun graph ->
+          let b, set_b = Bonsai.state ~here:(create_location `State 1) 0 graph in
+          let%arr _ = a
+          and _ = b
+          and set_a
+          and set_b in
+          set_a, set_b)
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (* if we wanted to turn it on, then we'd call [enable_computation_watcher] here *)
+        component
+    in
+    (* These should all be empty! *)
+    [%expect {| |}];
     Handle.do_actions handle [ `A 1 ];
     Handle.show handle;
     [%expect {| |}];
@@ -152,21 +2303,149 @@ module%test [@name "free vars"] _ = struct
     [%expect {| |}]
   ;;
 
-  let%expect_test "stop pinging when monitor is inactive" =
-    let active = Bonsai.Var.create true in
+  let%expect_test "value isn't used" =
+    let watcher_queue = Queue.create () in
     let component graph =
-      let a, set_a = Bonsai.state 0 graph in
-      match%sub Bonsai.Var.value active with
+      let _, set_a = Bonsai.state ~here:(create_location `State 0) 0 graph in
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        graph
+        ~f:(fun graph ->
+          let b, set_b = Bonsai.state ~here:(create_location `State 1) 0 graph in
+          let%arr _ = b
+          and set_a
+          and set_b in
+          set_a, set_b)
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    (* we still depend on [set_a] so something will be printed initially *)
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect {| |}];
+    Handle.do_actions handle [ `B 1 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to State_machine0 at [State-depth-1-location:LINE:COL]
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+      |}];
+    Handle.do_actions handle [ `A 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect {| |}]
+  ;;
+
+  let%expect_test "make sure fix doesn't log errors" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      let a, _ = Bonsai.state 10 ~here:(create_location `State 1) graph in
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        graph
+        ~f:(fun graph ->
+          let fixed =
+            Bonsai.fix
+              a
+              ~f:(fun ~recurse a graph ->
+                let b =
+                  let%arr a in
+                  a - 1
+                in
+                let should_break =
+                  let%arr b in
+                  b <= 0
+                in
+                if%sub should_break then Bonsai.return 0 else recurse b graph)
+              graph
+          in
+          let%arr _ = fixed in
+          (fun (_ : int) -> Effect.Ignore), fun (_ : int) -> Effect.Ignore)
+    in
+    let (_ : (Result_spec.t, Result_spec.incoming) Handle.t) =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    (* This should not log a line that starts with BUG *)
+    [%expect {| |}]
+  ;;
+
+  let%expect_test "make sure state resetter doesn't log errors" =
+    let watcher_queue = Queue.create () in
+    let component graph =
+      let resetter =
+        Bonsai.Debug.watch_computation
+          ~f:(fun graph ->
+            let b, reset_b =
+              Bonsai.with_model_resetter
+                ~f:(fun graph ->
+                  let b, set_b =
+                    Bonsai.state
+                      ~here:(create_location `State 1)
+                      ~sexp_of_model:Int.sexp_of_t
+                      0
+                      graph
+                  in
+                  let%arr _ = b
+                  and set_b in
+                  set_b)
+                graph
+            in
+            Bonsai.both b reset_b)
+          graph
+      in
+      let%arr set_b, reset_b = resetter in
+      set_b, fun (_ : int) -> reset_b
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    Handle.show handle;
+    (* Should not have a line that starts with BUG *)
+    [%expect {| |}]
+  ;;
+
+  let%expect_test "stop pinging when monitor is inactive" =
+    let watcher_queue = Queue.create () in
+    let active = Bonsai.Expert.Var.create true in
+    let component graph =
+      let a, set_a = Bonsai.state ~here:(create_location `State 0) 0 graph in
+      match%sub Bonsai.Expert.Var.value active with
       | false ->
         let%arr _ = a
         and set_a in
         set_a, fun _ -> Effect.Ignore
       | true ->
-        Bonsai.Debug.monitor_free_variables
-          ~here:fake_monitor_location
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 0)
           graph
           ~f:(fun graph ->
-            let b, set_b = Bonsai.state 0 graph in
+            let b, set_b = Bonsai.state ~here:(create_location `State 1) 0 graph in
             let%arr _ = a
             and _ = b
             and set_a
@@ -174,36 +2453,73 @@ module%test [@name "free vars"] _ = struct
             set_a, set_b)
     in
     let handle =
-      Handle.create (module Result_spec) (enable_free_variable_monitor component)
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
     in
     Handle.show handle;
+    log_queue watcher_queue;
     [%expect
       {|
-      ("node updated" (monitor fake-monitor-location:0:0) (incr_info ()))
-      ("node updated" (monitor fake-monitor-location:0:0) (incr_info ()))
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
       |}];
     Handle.do_actions handle [ `A 1 ];
     Handle.show handle;
-    [%expect {| ("node updated" (monitor fake-monitor-location:0:0) (incr_info ())) |}];
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
     (* we disable the computation that did the monitoring, so the messages should stop *)
-    Bonsai.Var.set active false;
+    Bonsai.Expert.Var.set active false;
     Handle.show handle;
+    log_queue watcher_queue;
     [%expect {| |}];
     Handle.do_actions handle [ `A 2 ];
     Handle.show handle;
+    log_queue watcher_queue;
     [%expect {| |}]
   ;;
 
   let%expect_test "stop pinging when value isn't depended on" =
-    let active = Bonsai.Var.create true in
+    let watcher_queue = Queue.create () in
+    let active = Bonsai.Expert.Var.create true in
     let component graph =
-      let a, set_a = Bonsai.state 0 graph in
+      let a, set_a = Bonsai.state ~here:(create_location `State 0) 0 graph in
       let result =
-        Bonsai.Debug.monitor_free_variables
-          ~here:fake_monitor_location
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 0)
           graph
           ~f:(fun _graph ->
-            match%sub Bonsai.Var.value active with
+            match%sub Bonsai.Expert.Var.value ~here:(create_location `Incr 0) active with
             | false -> Bonsai.return ()
             | true ->
               let%arr _ = a in
@@ -215,49 +2531,416 @@ module%test [@name "free vars"] _ = struct
       set_a, fun _ -> Effect.Ignore
     in
     let handle =
-      Handle.create (module Result_spec) (enable_free_variable_monitor component)
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
     in
     Handle.show handle;
-    [%expect {| ("node updated" (monitor fake-monitor-location:0:0) (incr_info ())) |}];
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
     Handle.do_actions handle [ `A 1 ];
     Handle.show handle;
-    [%expect {| ("node updated" (monitor fake-monitor-location:0:0) (incr_info ())) |}];
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Named node at [State-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
     (* we disable the computation that did the monitoring, so the messages should stop *)
-    Bonsai.Var.set active false;
+    Bonsai.Expert.Var.set active false;
     Handle.show handle;
-    [%expect {| |}];
+    log_queue watcher_queue;
+    (* This is expected as we set a value that was created within the computation and
+         depended on there *)
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
     Handle.do_actions handle [ `A 2 ];
     Handle.show handle;
+    log_queue watcher_queue;
     [%expect {| |}]
   ;;
 
-  let%expect_test "BUG: free-variable-monitor should trigger on vars" =
-    let var = Bonsai.Var.create true in
+  let%expect_test "BUG: [Assoc_on node] computation watcher" =
+    let var = Bonsai.Expert.Var.create (Int.Map.of_alist_exn [ 0, 1; 1, 10; 2, 200 ]) in
+    let watcher_queue = Queue.create () in
+    let thing = Bonsai.Expert.Var.create 0 in
+    let thing_value = Bonsai.Expert.Var.value thing in
+    let key_value = Bonsai.Expert.Var.value var in
     let component graph =
-      Bonsai.Debug.monitor_free_variables
-        ~here:fake_monitor_location
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
+        ~f:(fun graph ->
+          let assoc_on =
+            Bonsai.Expert.assoc_on
+              (module Int)
+              (module Int)
+              key_value
+              ~get_model_key:(fun key data -> key + data)
+              ~f:(fun key data graph ->
+                let thing_value =
+                  Bonsai.Debug.watch_computation
+                    ~here:(create_location `Watcher 1)
+                    ~f:(fun _graph ->
+                      let%arr thing_value
+                      and _key = key in
+                      thing_value)
+                    graph
+                in
+                let%arr thing_value and data in
+                data + thing_value)
+              graph
+          in
+          let%arr _assoc_on = assoc_on in
+          (fun (_ : int) -> Effect.Ignore), fun (_ : int) -> Effect.Ignore)
+        graph
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    Handle.show handle;
+    (* Should be blank *)
+    [%expect {| |}]
+  ;;
+
+  let%expect_test "BUG: [Fetch node] dynamic lookup computation watcher" =
+    let watcher_queue = Queue.create () in
+    let id = Bonsai.Dynamic_scope.create ~name:"my-id" ~fallback:"no" () in
+    let component graph =
+      let id_lookup = Bonsai.Dynamic_scope.lookup id graph in
+      let default_value =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 2)
+          ~f:(fun _graph ->
+            let%arr id_lookup in
+            id_lookup)
+          graph
+      in
+      let default_value_inside =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 5)
+          ~f:(fun graph ->
+            let id_lookup = Bonsai.Dynamic_scope.lookup id graph in
+            let%arr id_lookup in
+            id_lookup)
+          graph
+      in
+      let a, set_a = Bonsai.state ~here:(create_location `State 100) 0 graph in
+      let a =
+        let%arr a in
+        Int.to_string a
+      in
+      let set_value =
+        Bonsai.Dynamic_scope.set
+          id
+          a
+          ~inside:(fun graph ->
+            let id_lookup = Bonsai.Dynamic_scope.lookup id graph in
+            Bonsai.Debug.watch_computation
+              ~here:(create_location `Watcher 0)
+              ~f:(fun graph ->
+                let inner_watcher =
+                  Bonsai.Debug.watch_computation
+                    ~here:(create_location `Watcher 1)
+                    ~f:(fun _graph ->
+                      let%arr id_lookup in
+                      id_lookup ^ "X")
+                    graph
+                in
+                let%arr id_lookup = inner_watcher in
+                id_lookup ^ " set")
+              graph)
+          graph
+      in
+      let set_value_2 =
+        Bonsai.Dynamic_scope.set
+          id
+          a
+          ~inside:(fun graph ->
+            let id_lookup = Bonsai.Dynamic_scope.lookup id graph in
+            let%arr id_lookup in
+            id_lookup ^ " set2")
+          graph
+      in
+      let watched_set_value =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 4)
+          ~f:(fun _graph ->
+            let%arr set_value_2 in
+            set_value_2)
+          graph
+      in
+      let set_value_encompassed_default =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 3)
+          ~f:(fun graph ->
+            let id_lookup = Bonsai.Dynamic_scope.lookup id graph in
+            Bonsai.Dynamic_scope.set
+              id
+              a
+              ~inside:(fun _graph ->
+                let%arr id_lookup in
+                id_lookup)
+              graph)
+          graph
+      in
+      let set_value_encompassed =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 3)
+          ~f:(fun graph ->
+            Bonsai.Dynamic_scope.set
+              id
+              a
+              ~inside:(fun graph ->
+                let id_lookup = Bonsai.Dynamic_scope.lookup id graph in
+                let%arr id_lookup in
+                id_lookup)
+              graph)
+          graph
+      in
+      let%arr _ = set_value
+      and set_a
+      and _ = default_value
+      and _ = default_value_inside
+      and _ = watched_set_value
+      and _ = set_value_encompassed_default
+      and _ = set_value_encompassed in
+      (fun (_ : int) -> Effect.Ignore), set_a
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Named node at [lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-2-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      --------------------------------
+      2 watched computations updated due to Named node at [lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+       - Watcher-depth-1-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      --------------------------------
+      Watched computation updated due to Named node at [lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-4-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Handle.do_actions handle [ `B 2 ];
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      2 watched computations updated due to Named node at [lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+       - Watcher-depth-1-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      --------------------------------
+      Watched computation updated due to Named node at [lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-4-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "BUG: [Fetch node] unexpected behavior when doing unexpected things" =
+    let watcher_queue = Queue.create () in
+    let id = Bonsai.Dynamic_scope.create ~name:"my-id" ~fallback:"no" () in
+    let component graph =
+      let should_not_log__dyn_var_not_found =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 2)
+          ~f:(fun graph ->
+            let id_lookup = Bonsai.Dynamic_scope.lookup id graph in
+            let%arr id_lookup in
+            id_lookup)
+          graph
+      in
+      let should_not_log__no_free_variables =
+        Bonsai.Debug.watch_computation
+          ~here:(create_location `Watcher 1)
+          ~f:(fun graph ->
+            Bonsai.Dynamic_scope.set
+              id
+              (Bonsai.return "weird")
+              ~inside:(fun graph ->
+                let id_lookup = Bonsai.Dynamic_scope.lookup id graph in
+                let%arr id_lookup in
+                id_lookup)
+              graph)
+          graph
+      in
+      let should_log =
+        Bonsai.Dynamic_scope.set
+          id
+          (Bonsai.return "weird")
+          ~inside:(fun graph ->
+            Bonsai.Debug.watch_computation
+              ~here:(create_location `Watcher 1)
+              ~f:(fun graph ->
+                let id_lookup = Bonsai.Dynamic_scope.lookup id graph in
+                let id_lookup2 = Bonsai.Dynamic_scope.lookup id graph in
+                let%arr id_lookup and id_lookup2 in
+                id_lookup ^ id_lookup2)
+              graph)
+          graph
+      in
+      let%arr _ = should_not_log__dyn_var_not_found
+      and _ = should_not_log__no_free_variables
+      and _ = should_log in
+      (fun (_ : int) -> Effect.Ignore), fun (_ : int) -> Effect.Ignore
+    in
+    let handle =
+      Handle.create
+        (module Result_spec)
+        (enable_computation_watcher ~watcher_queue component)
+    in
+    Handle.show handle;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Named nodes at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-1-location:LINE:COL
+      |}]
+  ;;
+
+  let%expect_test "free-variable-monitor should trigger on vars" =
+    let watcher_queue = Queue.create () in
+    let var = Bonsai.Expert.Var.create true in
+    let component graph =
+      Bonsai.Debug.watch_computation
+        ~here:(create_location `Watcher 0)
         graph
         ~f:(fun _graph ->
-          let%arr _ = Bonsai.Var.value var in
+          let%arr _ = Bonsai.Expert.Var.value ~here:(create_location `Incr 0) var in
           ())
     in
     let handle =
       Handle.create
         Bonsai_test.Result_spec.invisible
-        (enable_free_variable_monitor component)
+        (enable_computation_watcher ~watcher_queue component)
     in
     Handle.show handle;
-    [%expect {| |}];
-    Bonsai.Var.set var false;
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}];
+    Bonsai.Expert.Var.set var false;
     Handle.show handle;
-    [%expect {| |}]
+    log_queue watcher_queue;
+    [%expect
+      {|
+      --------------------------------
+      Watched computation updated due to Incremental node at [Incremental-depth-0-location:LINE:COL]
+
+      Details: (incr_info ())
+
+      Watchers:
+       - Watcher-depth-0-location:LINE:COL
+
+      Updated computation depended on at:
+       - lib/bonsai/test/of_bonsai_itself/test_cont_bonsai.ml:LINE:COL
+      |}]
   ;;
 end
 
 let%expect_test "Setting cutoff on Bonsai values should not change previously set cutoffs"
   =
-  let var = Bonsai.Var.create (0, 0) in
-  let value = Bonsai.Var.value var in
+  let var = Bonsai.Expert.Var.create (0, 0) in
+  let value = Bonsai.Expert.Var.value var in
   let component graph =
     let pair = Bonsai.Incr.value_cutoff value graph ~equal:phys_equal in
     let (_ : _ Bonsai.t) =
@@ -275,10 +2958,10 @@ let%expect_test "Setting cutoff on Bonsai values should not change previously se
   in
   Handle.show handle;
   [%expect {| (0 0) |}];
-  Bonsai.Var.set var (1, 0);
+  Bonsai.Expert.Var.set var (1, 0);
   Handle.show handle;
   [%expect {| (1 0) |}];
-  Bonsai.Var.set var (1, 2);
+  Bonsai.Expert.Var.set var (1, 2);
   Handle.show handle;
   [%expect {| (1 2) |}]
 ;;
@@ -286,8 +2969,8 @@ let%expect_test "Setting cutoff on Bonsai values should not change previously se
 let%expect_test "Cutoff set by let%arr ppx should not be applied to different \
                  incremental nodes"
   =
-  let var = Bonsai.Var.create (0, 0) in
-  let value = Bonsai.Var.value var in
+  let var = Bonsai.Expert.Var.create (0, 0) in
+  let value = Bonsai.Expert.Var.value var in
   let component _graph =
     let%sub pair = value in
     let%sub _ =
@@ -306,10 +2989,10 @@ let%expect_test "Cutoff set by let%arr ppx should not be applied to different \
   in
   Handle.show handle;
   [%expect {| (0 0) |}];
-  Bonsai.Var.set var (1, 0);
+  Bonsai.Expert.Var.set var (1, 0);
   Handle.show handle;
   [%expect {| (1 0) |}];
-  Bonsai.Var.set var (1, 2);
+  Bonsai.Expert.Var.set var (1, 2);
   Handle.show handle;
   [%expect {| (1 2) |}]
 ;;
@@ -325,8 +3008,8 @@ let%expect_test "Cutoff propragates on named values regression" =
      cutoff functions (one for the left element and another for the second element)
      and showcasing that each node is not affected by the other cutoff node.
   *)
-  let var = Bonsai.Var.create (0, 0) in
-  let value = Bonsai.Var.value var in
+  let var = Bonsai.Expert.Var.create (0, 0) in
+  let value = Bonsai.Expert.Var.value var in
   let component graph =
     let tupled_input = value in
     let left =
@@ -359,11 +3042,11 @@ let%expect_test "Cutoff propragates on named values regression" =
   Handle.show handle;
   [%expect {| (0 0) |}];
   (* First element changes. *)
-  Bonsai.Var.set var (1, 0);
+  Bonsai.Expert.Var.set var (1, 0);
   (* Missed trigger! *)
   Handle.show handle;
   [%expect {| (1 0) |}];
-  Bonsai.Var.set var (1, 2);
+  Bonsai.Expert.Var.set var (1, 2);
   (* When the second element changes, this is fine since its cutoff function
      won.*)
   Handle.show handle;
@@ -371,8 +3054,8 @@ let%expect_test "Cutoff propragates on named values regression" =
 ;;
 
 let%expect_test "What happens when cutoff nodes are nested?" =
-  let var = Bonsai.Var.create (0, 0) in
-  let value = Bonsai.Var.value var in
+  let var = Bonsai.Expert.Var.create (0, 0) in
+  let value = Bonsai.Expert.Var.value var in
   let component graph =
     let first_cutoff =
       Bonsai.Incr.value_cutoff value graph ~equal:(fun (_, a) (_, b) -> phys_equal a b)
@@ -409,19 +3092,19 @@ let%expect_test "What happens when cutoff nodes are nested?" =
   Handle.show handle;
   [%expect {| (0 0) |}];
   (* First element changes. *)
-  Bonsai.Var.set var (1, 0);
+  Bonsai.Expert.Var.set var (1, 0);
   Handle.show handle;
   (* Does not recompute! (first cutoff still says they're equal.) *)
   [%expect {| (0 0) |}];
   (* Second element changes. *)
-  Bonsai.Var.set var (0, 2);
+  Bonsai.Expert.Var.set var (0, 2);
   (* Does not recompute! (second cutoff still says they're equal.) *)
   Handle.show handle;
   [%expect {| (0 0) |}];
-  Bonsai.Var.set var (1, 2);
+  Bonsai.Expert.Var.set var (1, 2);
   Handle.show handle;
   [%expect {| (0 0) |}];
-  Bonsai.Var.set var (2, 3);
+  Bonsai.Expert.Var.set var (2, 3);
   (* Only once both cutoffs say that they're unequal, recomputation happens. *)
   Handle.show handle;
   [%expect {| (2 3) |}]
@@ -445,8 +3128,8 @@ let%expect_test "if%sub" =
     let b = return "world" in
     if%sub input then a else b
   in
-  let var = Bonsai.Var.create true in
-  print_s (sexp_of_computation (component (Bonsai.Var.value var)));
+  let var = Bonsai.Expert.Var.create true in
+  print_s (sexp_of_computation (component (Bonsai.Expert.Var.value var)));
   [%expect
     {|
     (Sub
@@ -460,11 +3143,13 @@ let%expect_test "if%sub" =
           (Return (value (Constant (id (Test 4))))))))))
     |}];
   let handle =
-    Handle.create (Result_spec.string (module String)) (component (Bonsai.Var.value var))
+    Handle.create
+      (Result_spec.string (module String))
+      (component (Bonsai.Expert.Var.value var))
   in
   Handle.show handle;
   [%expect {| hello |}];
-  Bonsai.Var.set var false;
+  Bonsai.Expert.Var.set var false;
   Handle.show handle;
   [%expect {| world |}]
 ;;
@@ -475,13 +3160,15 @@ let%expect_test "call component" =
     x + 1
   in
   let component input _graph = add_one input in
-  let var = Bonsai.Var.create 1 in
+  let var = Bonsai.Expert.Var.create 1 in
   let handle =
-    Handle.create (Result_spec.sexp (module Int)) (component (Bonsai.Var.value var))
+    Handle.create
+      (Result_spec.sexp (module Int))
+      (component (Bonsai.Expert.Var.value var))
   in
   Handle.show handle;
   [%expect {| 2 |}];
-  Bonsai.Var.set var 2;
+  Bonsai.Expert.Var.set var 2;
   Handle.show handle;
   [%expect {| 3 |}]
 ;;
@@ -541,14 +3228,14 @@ let%expect_test "on_display for updating a state" =
     let () = Bonsai.Edge.after_display' update graph in
     Bonsai.both input state
   in
-  let var = Bonsai.Var.create 1 in
+  let var = Bonsai.Expert.Var.create 1 in
   let handle =
     Handle.create
       (Result_spec.sexp
          (module struct
            type t = int * int option [@@deriving sexp_of]
          end))
-      (component (Bonsai.Var.value var))
+      (component (Bonsai.Expert.Var.value var))
   in
   Handle.show handle;
   [%expect {| (1 ()) |}];
@@ -556,7 +3243,7 @@ let%expect_test "on_display for updating a state" =
   [%expect {| (1 (1)) |}];
   Handle.show handle;
   [%expect {| (1 (1)) |}];
-  Bonsai.Var.set var 2;
+  Bonsai.Expert.Var.set var 2;
   Handle.show handle;
   [%expect {| (2 (1)) |}];
   Handle.show handle;
@@ -781,12 +3468,12 @@ let%expect_test "constant map + simplifiable assoc ~f => constant map proper eva
 ;;
 
 let%expect_test "assoc_on" =
-  let var = Bonsai.Var.create (Int.Map.of_alist_exn [ 0, (); 1, (); 2, () ]) in
+  let var = Bonsai.Expert.Var.create (Int.Map.of_alist_exn [ 0, (); 1, (); 2, () ]) in
   let component =
     Bonsai.Expert.assoc_on
       (module Int)
       (module Int)
-      (Bonsai.Var.value var)
+      (Bonsai.Expert.Var.value var)
       ~get_model_key:(fun key _data -> key % 2)
       ~f:(fun _key _data graph ->
         let model, inject =
@@ -831,7 +3518,7 @@ let%expect_test "assoc_on" =
   set_two 3;
   Handle.show handle;
   [%expect {| ((0 3) (1 0) (2 3)) |}];
-  Bonsai.Var.set var (Int.Map.of_alist_exn [ 1, () ]);
+  Bonsai.Expert.Var.set var (Int.Map.of_alist_exn [ 1, () ]);
   Handle.show handle;
   [%expect {| ((1 0)) |}];
   set_two 4;
@@ -841,18 +3528,18 @@ let%expect_test "assoc_on" =
     inactive
     ((1 0))
     |}];
-  Bonsai.Var.set var (Int.Map.of_alist_exn [ 1, (); 2, () ]);
+  Bonsai.Expert.Var.set var (Int.Map.of_alist_exn [ 1, (); 2, () ]);
   Handle.show handle;
   [%expect {| ((1 0) (2 3)) |}]
 ;;
 
 let%expect_test "simplify assoc_on" =
-  let var = Bonsai.Var.create (Int.Map.of_alist_exn [ 0, (); 1, (); 2, () ]) in
+  let var = Bonsai.Expert.Var.create (Int.Map.of_alist_exn [ 0, (); 1, (); 2, () ]) in
   let component graph =
     Bonsai.Expert.assoc_on
       (module Int)
       (module Int)
-      (Bonsai.Var.value var)
+      (Bonsai.Expert.Var.value var)
       graph
       ~get_model_key:(fun key _data -> key % 2)
       ~f:(fun _key data _graph -> data)
@@ -1043,13 +3730,15 @@ let%expect_test "chain" =
     let b = double a in
     b
   in
-  let var = Bonsai.Var.create 1 in
+  let var = Bonsai.Expert.Var.create 1 in
   let handle =
-    Handle.create (Result_spec.sexp (module Int)) (component (Bonsai.Var.value var))
+    Handle.create
+      (Result_spec.sexp (module Int))
+      (component (Bonsai.Expert.Var.value var))
   in
   Handle.show handle;
   [%expect {| 4 |}];
-  Bonsai.Var.set var 2;
+  Bonsai.Expert.Var.set var 2;
   Handle.show handle;
   [%expect {| 6 |}]
 ;;
@@ -1064,13 +3753,15 @@ let%expect_test "chain + both" =
     let c = add (Bonsai.both a b) in
     c
   in
-  let var = Bonsai.Var.create 1 in
+  let var = Bonsai.Expert.Var.create 1 in
   let handle =
-    Handle.create (Result_spec.sexp (module Int)) (component (Bonsai.Var.value var))
+    Handle.create
+      (Result_spec.sexp (module Int))
+      (component (Bonsai.Expert.Var.value var))
   in
   Handle.show handle;
   [%expect {| 6 |}];
-  Bonsai.Var.set var 2;
+  Bonsai.Expert.Var.set var 2;
   Handle.show handle;
   [%expect {| 9 |}]
 ;;
@@ -1151,35 +3842,35 @@ let%expect_test "wrap_n" =
 ;;
 
 let%expect_test "match%sub" =
-  let var : (string, int) Either.t Bonsai.Var.t =
-    Bonsai.Var.create (Either.First "hello")
+  let var : (string, int) Either.t Bonsai.Expert.Var.t =
+    Bonsai.Expert.Var.create (Either.First "hello")
   in
   let component _graph =
-    match%sub Bonsai.Var.value var with
+    match%sub Bonsai.Expert.Var.value var with
     | First s -> Bonsai.map s ~f:(sprintf "%s world")
     | Second i -> Bonsai.map i ~f:Int.to_string
   in
   let handle = Handle.create (Result_spec.string (module String)) component in
   Handle.show handle;
   [%expect {| hello world |}];
-  Bonsai.Var.set var (Second 2);
+  Bonsai.Expert.Var.set var (Second 2);
   Handle.show handle;
   [%expect {| 2 |}]
 ;;
 
 let%expect_test "match%sub" =
-  let var : (string, int) Either.t Bonsai.Var.t =
-    Bonsai.Var.create (Either.First "hello")
+  let var : (string, int) Either.t Bonsai.Expert.Var.t =
+    Bonsai.Expert.Var.create (Either.First "hello")
   in
   let component _graph =
-    match%sub Bonsai.Var.value var with
+    match%sub Bonsai.Expert.Var.value var with
     | First s -> Bonsai.map s ~f:(sprintf "%s world")
     | Second i -> Bonsai.map i ~f:Int.to_string
   in
   let handle = Handle.create (Result_spec.string (module String)) component in
   Handle.show handle;
   [%expect {| hello world |}];
-  Bonsai.Var.set var (Second 2);
+  Bonsai.Expert.Var.set var (Second 2);
   Handle.show handle;
   [%expect {| 2 |}]
 ;;
@@ -1199,13 +3890,15 @@ let%expect_test "match%sub repro" =
       let%map s in
       sprintf "search results %d" s
   in
-  let var = Bonsai.Var.create (Loading "hello") in
+  let var = Bonsai.Expert.Var.create (Loading "hello") in
   let handle =
-    Handle.create (Result_spec.string (module String)) (component (Bonsai.Var.value var))
+    Handle.create
+      (Result_spec.string (module String))
+      (component (Bonsai.Expert.Var.value var))
   in
   Handle.show handle;
   [%expect {| loading hello |}];
-  Bonsai.Var.set var (Search_results 5);
+  Bonsai.Expert.Var.set var (Search_results 5);
   Handle.show handle;
   [%expect {| search results 5 |}]
 ;;
@@ -1216,21 +3909,23 @@ let%expect_test "if%sub" =
     let b = return "world" in
     if%sub input then a else b
   in
-  let var = Bonsai.Var.create true in
+  let var = Bonsai.Expert.Var.create true in
   let handle =
-    Handle.create (Result_spec.string (module String)) (component (Bonsai.Var.value var))
+    Handle.create
+      (Result_spec.string (module String))
+      (component (Bonsai.Expert.Var.value var))
   in
   Handle.show handle;
   [%expect {| hello |}];
-  Bonsai.Var.set var false;
+  Bonsai.Expert.Var.set var false;
   Handle.show handle;
   [%expect {| world |}]
 ;;
 
 let%expect_test "match%sub defers exceptions until runtime" =
-  let var = Bonsai.Var.create true in
+  let var = Bonsai.Expert.Var.create true in
   let component _graph =
-    match%sub Bonsai.Var.value var with
+    match%sub Bonsai.Expert.Var.value var with
     | true -> return "yay!"
     | false -> assert false
   in
@@ -1358,15 +4053,15 @@ let%expect_test "map > lazy" =
     let%map label and children and depth in
     [%message label (depth : int) (children : Sexp.t Int.Map.t)]
   in
-  let t_var = Bonsai.Var.create { M.label = "hi"; children = Int.Map.empty } in
-  let t_value = Bonsai.Var.value t_var in
+  let t_var = Bonsai.Expert.Var.create { M.label = "hi"; children = Int.Map.empty } in
+  let t_value = Bonsai.Expert.Var.value t_var in
   let handle =
     Handle.create (Result_spec.sexp (module Sexp)) (f ~t:t_value ~depth:(Bonsai.return 0))
   in
   [%expect {| |}];
   Handle.show handle;
   [%expect {| (hi (depth 0) (children ())) |}];
-  Bonsai.Var.set
+  Bonsai.Expert.Var.set
     t_var
     { M.label = "hi"
     ; children = Int.Map.singleton 0 { M.label = "hello"; children = Int.Map.empty }
@@ -1402,8 +4097,8 @@ let%expect_test "map > fix2" =
       let%map label and children and depth in
       [%message label (depth : int) (children : Sexp.t Int.Map.t)])
   in
-  let t_var = Bonsai.Var.create { M.label = "hi"; children = Int.Map.empty } in
-  let t_value = Bonsai.Var.value t_var in
+  let t_var = Bonsai.Expert.Var.create { M.label = "hi"; children = Int.Map.empty } in
+  let t_value = Bonsai.Expert.Var.value t_var in
   let handle =
     Handle.create
       (Result_spec.sexp (module Sexp))
@@ -1412,7 +4107,7 @@ let%expect_test "map > fix2" =
   [%expect {| |}];
   Handle.show handle;
   [%expect {| (hi (depth 0) (children ())) |}];
-  Bonsai.Var.set
+  Bonsai.Expert.Var.set
     t_var
     { M.label = "hi"
     ; children = Int.Map.singleton 0 { M.label = "hello"; children = Int.Map.empty }
@@ -1467,8 +4162,8 @@ let%expect_test "Using fix to implement mutual recursion (collatz)" =
     in
     step ~f:(fun x -> x) state even odd graph
   in
-  let var = Bonsai.Var.create 5 in
-  let value = Bonsai.Var.value var in
+  let var = Bonsai.Expert.Var.create 5 in
+  let value = Bonsai.Expert.Var.value var in
   let handle =
     Handle.create
       (module struct
@@ -1483,18 +4178,18 @@ let%expect_test "Using fix to implement mutual recursion (collatz)" =
   Handle.show handle;
   (* 5 -> 16 -> 8 -> 4 -> 2 -> 1 *)
   [%expect {| 5 |}];
-  Bonsai.Var.set var 6;
+  Bonsai.Expert.Var.set var 6;
   Handle.show handle;
   (* 6 -> 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1 *)
   [%expect {| 8 |}]
 ;;
 
 let%expect_test "dynamic action sent to non-existent assoc element" =
-  let var = Bonsai.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
+  let var = Bonsai.Expert.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
   let component graph =
     Bonsai.assoc
       (module Int)
-      (Bonsai.Var.value var)
+      (Bonsai.Expert.Var.value var)
       graph
       ~f:(fun _key _data graph ->
         let model, inject =
@@ -1539,7 +4234,7 @@ let%expect_test "dynamic action sent to non-existent assoc element" =
   set_two 3;
   Handle.show handle;
   [%expect {| ((1 0) (2 3)) |}];
-  Bonsai.Var.set var (Int.Map.of_alist_exn [ 1, () ]);
+  Bonsai.Expert.Var.set var (Int.Map.of_alist_exn [ 1, () ]);
   Handle.show handle;
   [%expect {| ((1 0)) |}];
   set_two 4;
@@ -1549,7 +4244,7 @@ let%expect_test "dynamic action sent to non-existent assoc element" =
     inactive
     ((1 0))
     |}];
-  Bonsai.Var.set var (Int.Map.of_alist_exn [ 1, (); 2, () ]);
+  Bonsai.Expert.Var.set var (Int.Map.of_alist_exn [ 1, (); 2, () ]);
   Handle.show handle;
   [%expect {| ((1 0) (2 3)) |}]
 ;;
@@ -1575,21 +4270,21 @@ module%test [@name "inactive delivery"] _ = struct
 
   let test_delivery_to_inactive_component computation =
     let run_test which_assoc =
-      let var = Bonsai.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
+      let var = Bonsai.Expert.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
       let component =
         match which_assoc with
         | `Assoc ->
           let i = return () in
           Bonsai.assoc
             (module Int)
-            (Bonsai.Var.value var)
+            (Bonsai.Expert.Var.value var)
             ~f:(fun _key _data -> computation i)
         | `Assoc_on ->
           let i = Bonsai.return () in
           Bonsai.Expert.assoc_on
             (module Int)
             (module String)
-            (Bonsai.Var.value var)
+            (Bonsai.Expert.Var.value var)
             ~get_model_key:(fun key _data -> Int.to_string key)
             ~f:(fun _key _data -> computation i)
       in
@@ -1619,11 +4314,11 @@ module%test [@name "inactive delivery"] _ = struct
       in
       set_two 3;
       Handle.show handle;
-      Bonsai.Var.set var (Int.Map.of_alist_exn [ 1, () ]);
+      Bonsai.Expert.Var.set var (Int.Map.of_alist_exn [ 1, () ]);
       Handle.show handle;
       set_two 4;
       Handle.show handle;
-      Bonsai.Var.set var (Int.Map.of_alist_exn [ 1, (); 2, () ]);
+      Bonsai.Expert.Var.set var (Int.Map.of_alist_exn [ 1, (); 2, () ]);
       Handle.show handle;
       Expect_test_helpers_base.expect_test_output ()
     in
@@ -2226,9 +4921,9 @@ module%test [@name "inactive delivery"] _ = struct
   ;;
 
   let%expect_test "resetting while inactive" =
-    let which_branch = Bonsai.Var.create true in
+    let which_branch = Bonsai.Expert.Var.create true in
     let component graph =
-      if%sub Bonsai.Var.value which_branch
+      if%sub Bonsai.Expert.Var.value which_branch
       then (
         let result, reset =
           Bonsai.with_model_resetter graph ~f:(fun graph ->
@@ -2255,11 +4950,11 @@ module%test [@name "inactive delivery"] _ = struct
     let reset () = Ui_effect.Expert.handle reset in
     set_value 3;
     Handle.show handle;
-    Bonsai.Var.set which_branch false;
+    Bonsai.Expert.Var.set which_branch false;
     Handle.show handle;
     set_value 4;
     Handle.show handle;
-    Bonsai.Var.set which_branch true;
+    Bonsai.Expert.Var.set which_branch true;
     Handle.show handle;
     [%expect
       {|
@@ -2269,19 +4964,19 @@ module%test [@name "inactive delivery"] _ = struct
       -1
       4
       |}];
-    Bonsai.Var.set which_branch false;
+    Bonsai.Expert.Var.set which_branch false;
     Handle.show handle;
     [%expect {| -1 |}];
     reset ();
-    Bonsai.Var.set which_branch true;
+    Bonsai.Expert.Var.set which_branch true;
     Handle.show handle;
     [%expect {| 0 |}]
   ;;
 
   let%expect_test "resetting while inactive via the reset passed in" =
-    let which_branch = Bonsai.Var.create true in
+    let which_branch = Bonsai.Expert.Var.create true in
     let component graph =
-      if%sub Bonsai.Var.value which_branch
+      if%sub Bonsai.Expert.Var.value which_branch
       then
         Bonsai.with_model_resetter' graph ~f:(fun ~reset graph ->
           let model, inject = Bonsai.state 0 graph in
@@ -2305,11 +5000,11 @@ module%test [@name "inactive delivery"] _ = struct
     let reset () = Ui_effect.Expert.handle reset in
     set_value 3;
     Handle.show handle;
-    Bonsai.Var.set which_branch false;
+    Bonsai.Expert.Var.set which_branch false;
     Handle.show handle;
     set_value 4;
     Handle.show handle;
-    Bonsai.Var.set which_branch true;
+    Bonsai.Expert.Var.set which_branch true;
     Handle.show handle;
     [%expect
       {|
@@ -2319,11 +5014,11 @@ module%test [@name "inactive delivery"] _ = struct
       -1
       4
       |}];
-    Bonsai.Var.set which_branch false;
+    Bonsai.Expert.Var.set which_branch false;
     Handle.show handle;
     [%expect {| -1 |}];
     reset ();
-    Bonsai.Var.set which_branch true;
+    Bonsai.Expert.Var.set which_branch true;
     Handle.show handle;
     [%expect {| 0 |}]
   ;;
@@ -2741,12 +5436,12 @@ module%test [@name "inactive delivery"] _ = struct
   end
 
   let%expect_test "inactive delivery to assoc_on with shared model keys" =
-    let var = Bonsai.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
+    let var = Bonsai.Expert.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
     let component graph =
       Bonsai.Expert.assoc_on
         (module Int)
         (module Unit)
-        (Bonsai.Var.value var)
+        (Bonsai.Expert.Var.value var)
         graph
         ~get_model_key:(fun _key _data -> ())
         ~f:(fun _key _data graph ->
@@ -2822,7 +5517,7 @@ module%test [@name "inactive delivery"] _ = struct
     (* Delivery to existing key in input map works *)
     set_two 3;
     Handle.show handle;
-    Bonsai.Var.set var (Int.Map.of_alist_exn [ 1, () ]);
+    Bonsai.Expert.Var.set var (Int.Map.of_alist_exn [ 1, () ]);
     Handle.show handle;
     (* 2 is no longer in the input map, so setting it should fail, even though its model
          is still in the model map *)
@@ -2832,7 +5527,7 @@ module%test [@name "inactive delivery"] _ = struct
     set_one 5;
     Handle.show handle;
     (* Reintroducing 2 will have it share the model *)
-    Bonsai.Var.set var (Int.Map.of_alist_exn [ 1, (); 2, () ]);
+    Bonsai.Expert.Var.set var (Int.Map.of_alist_exn [ 1, (); 2, () ]);
     Handle.show handle;
     [%expect
       {|
@@ -2853,7 +5548,7 @@ module%test [@name "testing Bonsai internals"] _ = struct
   [@@@alert "-rampantly_nondeterministic"]
 
   let%expect_test "remove unused models in assoc" =
-    let var = Bonsai.Var.create Int.Map.empty in
+    let var = Bonsai.Expert.Var.create Int.Map.empty in
     let module State_with_setter = struct
       type t =
         { state : string
@@ -2868,7 +5563,7 @@ module%test [@name "testing Bonsai internals"] _ = struct
     let component graph =
       Bonsai.assoc
         (module Int)
-        (Bonsai.Var.value var)
+        (Bonsai.Expert.Var.value var)
         graph
         ~f:(fun _key _data graph ->
           let state, set_state =
@@ -2905,7 +5600,7 @@ module%test [@name "testing Bonsai internals"] _ = struct
     in
     Handle.show_model handle;
     [%expect {| () |}];
-    Bonsai.Var.set var (Int.Map.of_alist_exn [ 1, (); 2, () ]);
+    Bonsai.Expert.Var.set var (Int.Map.of_alist_exn [ 1, (); 2, () ]);
     Handle.show_model handle;
     [%expect {| () |}];
     (* use the setter to re-establish the default *)
@@ -2924,9 +5619,11 @@ let%expect_test "multiple maps respect cutoff" =
     |> Bonsai.map ~f:(fun (_ : int) -> ())
     |> Bonsai.map ~f:(fun () -> print_endline "triggered")
   in
-  let var = Bonsai.Var.create 1 in
+  let var = Bonsai.Expert.Var.create 1 in
   let handle =
-    Handle.create (Result_spec.sexp (module Unit)) (component (Bonsai.Var.value var))
+    Handle.create
+      (Result_spec.sexp (module Unit))
+      (component (Bonsai.Expert.Var.value var))
   in
   Handle.show handle;
   [%expect
@@ -2934,7 +5631,7 @@ let%expect_test "multiple maps respect cutoff" =
     triggered
     ()
     |}];
-  Bonsai.Var.set var 2;
+  Bonsai.Expert.Var.set var 2;
   (* Cutoff happens on the unit, so "triggered" isn't printed *)
   Handle.show handle;
   [%expect {| () |}]
@@ -2992,12 +5689,12 @@ let%expect_test "let syntax is collapsed upon eval" =
 ;;
 
 let%expect_test "ignored result of assoc" =
-  let var = Bonsai.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
+  let var = Bonsai.Expert.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
   let component graph =
     let (_ : _) =
       Bonsai.assoc
         (module Int)
-        (Bonsai.Var.value var)
+        (Bonsai.Expert.Var.value var)
         graph
         ~f:(fun _key data graph ->
           (* this sub is here to make sure that bonsai doesn't
@@ -3010,7 +5707,7 @@ let%expect_test "ignored result of assoc" =
   let handle = Handle.create (Result_spec.sexp (module Unit)) component in
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set var (Int.Map.of_alist_exn []);
+  Bonsai.Expert.Var.set var (Int.Map.of_alist_exn []);
   Expect_test_helpers_core.require_does_not_raise (fun () -> Handle.show handle);
   [%expect {| () |}]
 ;;
@@ -3146,7 +5843,7 @@ let%expect_test "on_display for updating a state (using on_change)" =
     Bonsai.Edge.on_change' ~equal:[%equal: Int.t] ~callback input graph;
     return ()
   in
-  let var = Bonsai.Var.create 1 in
+  let var = Bonsai.Expert.Var.create 1 in
   let handle =
     Handle.create
       (Result_spec.sexp
@@ -3155,7 +5852,7 @@ let%expect_test "on_display for updating a state (using on_change)" =
 
            let sexp_of_t () = Sexp.Atom "rendering..."
          end))
-      (component (Bonsai.Var.value var))
+      (component (Bonsai.Expert.Var.value var))
   in
   Handle.show handle;
   [%expect
@@ -3167,7 +5864,7 @@ let%expect_test "on_display for updating a state (using on_change)" =
   [%expect {| rendering... |}];
   Handle.show handle;
   [%expect {| rendering... |}];
-  Bonsai.Var.set var 2;
+  Bonsai.Expert.Var.set var 2;
   Handle.show handle;
   [%expect
     {|
@@ -3282,9 +5979,11 @@ let%expect_test "Handle.show lifecycle" =
         graph;
       rendered)
   in
-  let var = Bonsai.Var.create true in
+  let var = Bonsai.Expert.Var.create true in
   let handle =
-    Handle.create (Result_spec.string (module String)) (component (Bonsai.Var.value var))
+    Handle.create
+      (Result_spec.string (module String))
+      (component (Bonsai.Expert.Var.value var))
   in
   Handle.show handle;
   [%expect
@@ -3292,7 +5991,7 @@ let%expect_test "Handle.show lifecycle" =
     ((action activate) (on a))
     ((action after-display) (on a))
     |}];
-  Bonsai.Var.set var false;
+  Bonsai.Expert.Var.set var false;
   Handle.show handle;
   [%expect
     {|
@@ -3300,7 +5999,7 @@ let%expect_test "Handle.show lifecycle" =
     ((action activate) (on b))
     ((action after-display) (on b))
     |}];
-  Bonsai.Var.set var true;
+  Bonsai.Expert.Var.set var true;
   Handle.show handle;
   [%expect
     {|
@@ -3332,9 +6031,11 @@ let%expect_test "Handle.show_into_string lifecycle" =
         graph;
       rendered)
   in
-  let var = Bonsai.Var.create true in
+  let var = Bonsai.Expert.Var.create true in
   let handle =
-    Handle.create (Result_spec.string (module String)) (component (Bonsai.Var.value var))
+    Handle.create
+      (Result_spec.string (module String))
+      (component (Bonsai.Expert.Var.value var))
   in
   Handle.show_into_string handle |> print_endline;
   [%expect
@@ -3342,7 +6043,7 @@ let%expect_test "Handle.show_into_string lifecycle" =
     ((action activate) (on a))
     ((action after-display) (on a))
     |}];
-  Bonsai.Var.set var false;
+  Bonsai.Expert.Var.set var false;
   Handle.show_into_string handle |> print_endline;
   [%expect
     {|
@@ -3350,7 +6051,7 @@ let%expect_test "Handle.show_into_string lifecycle" =
     ((action activate) (on b))
     ((action after-display) (on b))
     |}];
-  Bonsai.Var.set var true;
+  Bonsai.Expert.Var.set var true;
   Handle.show_into_string handle |> print_endline;
   [%expect
     {|
@@ -4310,9 +7011,9 @@ module%test [@name "Clock.every"] _ = struct
         ; `Every_multiple_of_period_non_blocking
         ]
         ~f:(fun when_to_start_next_effect ->
-          let active = Bonsai.Var.create false in
+          let active = Bonsai.Expert.Var.create false in
           let component graph =
-            match%sub Bonsai.Var.value active with
+            match%sub Bonsai.Expert.Var.value active with
             | true ->
               Bonsai.Clock.every
                 ~when_to_start_next_effect
@@ -4335,7 +7036,7 @@ module%test [@name "Clock.every"] _ = struct
             after:  00:01:00.100000000Z
             after paint: 00:01:00.100000000Z
             |}];
-          Bonsai.Var.set active true;
+          Bonsai.Expert.Var.set active true;
           move_forward_and_show 0.1;
           [%expect
             {|
@@ -4344,7 +7045,7 @@ module%test [@name "Clock.every"] _ = struct
             "tick tock"
             after paint: 00:01:00.200000000Z
             |}];
-          Bonsai.Var.set active false;
+          Bonsai.Expert.Var.set active false;
           move_forward_and_show 0.1;
           [%expect
             {|
@@ -4352,7 +7053,7 @@ module%test [@name "Clock.every"] _ = struct
             after:  00:01:00.300000000Z
             after paint: 00:01:00.300000000Z
             |}];
-          Bonsai.Var.set active true;
+          Bonsai.Expert.Var.set active true;
           move_forward_and_show 0.1;
           [%expect
             {|
@@ -4371,9 +7072,9 @@ module%test [@name "Clock.every"] _ = struct
         ; `Every_multiple_of_period_non_blocking
         ]
         ~f:(fun when_to_start_next_effect ->
-          let active = Bonsai.Var.create true in
+          let active = Bonsai.Expert.Var.create true in
           let component graph =
-            match%sub Bonsai.Var.value active with
+            match%sub Bonsai.Expert.Var.value active with
             | true ->
               Bonsai.Clock.every
                 ~when_to_start_next_effect
@@ -4397,7 +7098,7 @@ module%test [@name "Clock.every"] _ = struct
             after paint: 00:01:01.000000000Z
             |}];
           (* The time is 1:01 and the clock becomes inactive*)
-          Bonsai.Var.set active false;
+          Bonsai.Expert.Var.set active false;
           Handle.recompute_view handle;
           move_forward_and_show 1.0;
           [%expect
@@ -4407,7 +7108,7 @@ module%test [@name "Clock.every"] _ = struct
             after paint: 00:01:02.000000000Z
             |}];
           (* The time is 1:02 and the clock becomes active again *)
-          Bonsai.Var.set active true;
+          Bonsai.Expert.Var.set active true;
           Handle.recompute_view handle;
           (* Now it becomes 1:03 and the effect scheduled from time 1:00 occurs *)
           move_forward_and_show 1.0;
@@ -4430,9 +7131,9 @@ module%test [@name "Clock.every"] _ = struct
         ; `Every_multiple_of_period_non_blocking
         ]
         ~f:(fun when_to_start_next_effect ->
-          let active = Bonsai.Var.create true in
+          let active = Bonsai.Expert.Var.create true in
           let component graph =
-            match%sub Bonsai.Var.value active with
+            match%sub Bonsai.Expert.Var.value active with
             | true ->
               Bonsai.Clock.every
                 ~when_to_start_next_effect
@@ -4456,7 +7157,7 @@ module%test [@name "Clock.every"] _ = struct
             after paint: 00:01:01.000000000Z
             |}];
           (* The time is 1:01 and the clock becomes inactive*)
-          Bonsai.Var.set active false;
+          Bonsai.Expert.Var.set active false;
           Handle.recompute_view handle;
           move_forward_and_show 3.0;
           [%expect
@@ -4467,7 +7168,7 @@ module%test [@name "Clock.every"] _ = struct
             |}];
           (* The time is 1:04 and the clock becomes active again. The effect at 1:03
                  does not run. *)
-          Bonsai.Var.set active true;
+          Bonsai.Expert.Var.set active true;
           Handle.recompute_view handle;
           move_forward_and_show 2.0;
           (* Now it becomes 1:06. The original activation time was 1:00 with a span of
@@ -4879,7 +7580,7 @@ module%test [@name "Clock.every"] _ = struct
 
   let%expect_test {| [every] continues to trigger effects even when the action takes a long time |}
     =
-    let match_var = Bonsai.Var.create true in
+    let match_var = Bonsai.Expert.Var.create true in
     let component graph =
       let (_ : unit Bonsai.t), inject =
         let sleep = Bonsai.Clock.sleep graph in
@@ -4896,7 +7597,7 @@ module%test [@name "Clock.every"] _ = struct
           sleep
           graph
       in
-      match%sub Bonsai.Var.value match_var with
+      match%sub Bonsai.Expert.Var.value match_var with
       | true ->
         Bonsai.Clock.every
           ~when_to_start_next_effect:`Every_multiple_of_period_non_blocking
@@ -5200,9 +7901,9 @@ let%expect_test "recompute_view_until_stable does not notice sleep effects" =
 ;;
 
 let%expect_test "sleep works even when switching between inactive and active" =
-  let active_var = Bonsai.Var.create true in
+  let active_var = Bonsai.Expert.Var.create true in
   let component graph =
-    match%sub Bonsai.Var.value active_var with
+    match%sub Bonsai.Expert.Var.value active_var with
     | true ->
       let sleep = Bonsai.Clock.sleep graph in
       let%map sleep in
@@ -5224,7 +7925,7 @@ let%expect_test "sleep works even when switching between inactive and active" =
       component
   in
   Handle.do_actions handle [ 0.0; 1.0; 2.0; 3.0 ];
-  Bonsai.Var.set active_var false;
+  Bonsai.Expert.Var.set active_var false;
   Handle.show handle;
   [%expect {| ("after sleep" (seconds 0)) |}];
   Handle.advance_clock_by handle (Time_ns.Span.of_sec 1.0);
@@ -5242,7 +7943,7 @@ let%expect_test "sleep works even when switching between inactive and active" =
   Handle.do_actions handle [ 3.0 ];
   Handle.show handle;
   [%expect {| (inactive (seconds 3)) |}];
-  Bonsai.Var.set active_var true;
+  Bonsai.Expert.Var.set active_var true;
   Handle.do_actions handle [ 3.0; 2.0; 1.0; 0.0 ];
   Handle.show handle;
   [%expect
@@ -5261,7 +7962,7 @@ let%expect_test "sleep works even when switching between inactive and active" =
   Handle.advance_clock_by handle (Time_ns.Span.of_sec 1.0);
   Handle.show handle;
   [%expect {| ("after sleep" (seconds 2)) |}];
-  Bonsai.Var.set active_var false;
+  Bonsai.Expert.Var.set active_var false;
   Handle.advance_clock_by handle (Time_ns.Span.of_sec 1.0);
   Handle.show handle;
   [%expect {| ("after sleep" (seconds 3)) |}];
@@ -5275,7 +7976,7 @@ module Query_response_tracker = Bonsai.Effect.For_testing.Query_response_tracker
 let edge_poll_shared ~get_expect_output =
   let effect_tracker = Query_response_tracker.create () in
   let effect = Bonsai.Effect.For_testing.of_query_response_tracker effect_tracker in
-  let var = Bonsai.Var.create "hello" in
+  let var = Bonsai.Expert.Var.create "hello" in
   let component graph =
     Bonsai.Edge.Poll.effect_on_change
       ~sexp_of_input:[%sexp_of: String.t]
@@ -5283,7 +7984,7 @@ let edge_poll_shared ~get_expect_output =
       ~equal_input:[%equal: String.t]
       ~equal_result:[%equal: String.t]
       Bonsai.Edge.Poll.Starting.empty
-      (Bonsai.Var.value var)
+      (Bonsai.Expert.Var.value var)
       ~effect:(Bonsai.return effect)
       graph
   in
@@ -5321,7 +8022,7 @@ let%expect_test "Edge.poll in order" =
     |}];
   trigger_display ();
   [%expect {| ((pending (hello)) (output ())) |}];
-  Bonsai.Var.set var "world";
+  Bonsai.Expert.Var.set var "world";
   trigger_display ();
   [%expect {| ((pending (hello)) (output ())) |}];
   trigger_display ();
@@ -5345,7 +8046,7 @@ let%expect_test "Edge.poll out of order" =
     |}];
   trigger_display ();
   [%expect {| ((pending (hello)) (output ())) |}];
-  Bonsai.Var.set var "world";
+  Bonsai.Expert.Var.set var "world";
   trigger_display ();
   [%expect {| ((pending (hello)) (output ())) |}];
   trigger_display ();
@@ -5864,24 +8565,24 @@ let%expect_test "bonk sorts a list" =
 ;;
 
 let%expect_test "freeze" =
-  let var = Bonsai.Var.create "hello" in
+  let var = Bonsai.Expert.Var.create "hello" in
   let component graph =
-    Bonsai.freeze ~equal:[%equal: String.t] (Bonsai.Var.value var) graph
+    Bonsai.freeze ~equal:[%equal: String.t] (Bonsai.Expert.Var.value var) graph
   in
   let handle = Handle.create (Result_spec.sexp (module String)) component in
   Handle.show handle;
   [%expect {| hello |}];
-  Bonsai.Var.set var "world";
+  Bonsai.Expert.Var.set var "world";
   Handle.show handle;
   [%expect {| hello |}]
 ;;
 
 let%expect_test "effect-lazy" =
-  let message = Bonsai.Var.create "hello" in
-  let on = Bonsai.Var.create true in
+  let message = Bonsai.Expert.Var.create "hello" in
+  let on = Bonsai.Expert.Var.create true in
   let component graph =
     let on_deactivate =
-      let%map message = Bonsai.Var.value message in
+      let%map message = Bonsai.Expert.Var.value message in
       let a =
         print_endline "computing a...";
         Effect.print_s [%sexp "a", (message : string)]
@@ -5894,7 +8595,7 @@ let%expect_test "effect-lazy" =
       in
       Effect.Many [ a; b ]
     in
-    if%sub Bonsai.Var.value on
+    if%sub Bonsai.Expert.Var.value on
     then (
       Bonsai.Edge.lifecycle ~on_deactivate graph;
       return ())
@@ -5902,9 +8603,9 @@ let%expect_test "effect-lazy" =
   in
   let handle = Handle.create (Result_spec.sexp (module Unit)) component in
   Handle.show handle;
-  Bonsai.Var.set message "there";
+  Bonsai.Expert.Var.set message "there";
   Handle.show handle;
-  Bonsai.Var.set message "world";
+  Bonsai.Expert.Var.set message "world";
   Handle.show handle;
   [%expect
     {|
@@ -5915,7 +8616,7 @@ let%expect_test "effect-lazy" =
     computing a...
     ()
     |}];
-  Bonsai.Var.set on false;
+  Bonsai.Expert.Var.set on false;
   Handle.show handle;
   [%expect
     {|
@@ -6166,13 +8867,13 @@ let%expect_test "state_machine_dynamic_model" =
 ;;
 
 let%expect_test "portal" =
-  let var = Bonsai.Var.create (Sexp.Atom "hello") in
+  let var = Bonsai.Expert.Var.create (Sexp.Atom "hello") in
   let component graph =
     Bonsai_extra.with_inject_fixed_point
       (fun inject graph ->
         Bonsai.Edge.on_change
           ~equal:[%equal: Sexp.t]
-          (Bonsai.Var.value var)
+          (Bonsai.Expert.Var.value var)
           ~callback:inject
           graph;
         return ((), Ui_effect.print_s))
@@ -6183,7 +8884,7 @@ let%expect_test "portal" =
      In an action-handler, the actions would be scheduled on the same frame. *)
   Handle.recompute_view_until_stable handle;
   [%expect {| hello |}];
-  Bonsai.Var.set var (Sexp.Atom "world");
+  Bonsai.Expert.Var.set var (Sexp.Atom "world");
   Handle.recompute_view_until_stable handle;
   [%expect {| world |}]
 ;;
@@ -6323,8 +9024,8 @@ let%expect_test "multi-thunk" =
 ;;
 
 let%expect_test "evaluation of pure values under a match%sub" =
-  let depending_on = Bonsai.Var.create 0 in
-  let determines_use = Bonsai.Var.create false in
+  let depending_on = Bonsai.Expert.Var.create 0 in
+  let determines_use = Bonsai.Expert.Var.create false in
   let component graph =
     let used_somewhere =
       match%sub opaque_const_value true with
@@ -6334,12 +9035,12 @@ let%expect_test "evaluation of pure values under a match%sub" =
             ~on_activate:(return (Effect.print_s [%message "activating!"]))
             graph
         in
-        let%map depending_on = Bonsai.Var.value depending_on in
+        let%map depending_on = Bonsai.Expert.Var.value depending_on in
         print_s [%message "doing work" (depending_on : int)];
         depending_on
       | false -> assert false
     in
-    match%sub Bonsai.Var.value determines_use with
+    match%sub Bonsai.Expert.Var.value determines_use with
     | true -> used_somewhere
     | false -> return (-1)
   in
@@ -6353,7 +9054,7 @@ let%expect_test "evaluation of pure values under a match%sub" =
     -1
     activating!
     |}];
-  Bonsai.Var.set determines_use true;
+  Bonsai.Expert.Var.set determines_use true;
   Handle.show handle;
   (* this is the only place that "doing work" should be printed *)
   [%expect
@@ -6361,20 +9062,20 @@ let%expect_test "evaluation of pure values under a match%sub" =
     ("doing work" (depending_on 0))
     0
     |}];
-  Bonsai.Var.set determines_use false;
+  Bonsai.Expert.Var.set determines_use false;
   Handle.show handle;
   [%expect {| -1 |}];
-  Bonsai.Var.set depending_on 1;
+  Bonsai.Expert.Var.set depending_on 1;
   Handle.show handle;
   [%expect {| -1 |}];
-  Bonsai.Var.set depending_on 2;
+  Bonsai.Expert.Var.set depending_on 2;
   Handle.show handle;
   [%expect {| -1 |}]
 ;;
 
 let%expect_test "evaluation of pure values under an assoc" =
-  let depending_on = Bonsai.Var.create 0 in
-  let determines_use = Bonsai.Var.create false in
+  let depending_on = Bonsai.Expert.Var.create 0 in
+  let determines_use = Bonsai.Expert.Var.create false in
   let component graph =
     let used_somewhere =
       Bonsai.assoc
@@ -6387,12 +9088,12 @@ let%expect_test "evaluation of pure values under an assoc" =
               ~on_activate:(return (Effect.print_s [%message "activating!"]))
               graph
           in
-          let%map depending_on = Bonsai.Var.value depending_on
+          let%map depending_on = Bonsai.Expert.Var.value depending_on
           and () = data in
           print_s [%message "doing work" (depending_on : int)];
           depending_on)
     in
-    match%sub Bonsai.Var.value determines_use with
+    match%sub Bonsai.Expert.Var.value determines_use with
     | true -> used_somewhere
     | false -> return Int.Map.empty
   in
@@ -6410,20 +9111,20 @@ let%expect_test "evaluation of pure values under an assoc" =
     ()
     activating!
     |}];
-  Bonsai.Var.set determines_use true;
+  Bonsai.Expert.Var.set determines_use true;
   Handle.show handle;
   [%expect
     {|
     ("doing work" (depending_on 0))
     ((1 0))
     |}];
-  Bonsai.Var.set determines_use false;
+  Bonsai.Expert.Var.set determines_use false;
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set depending_on 1;
+  Bonsai.Expert.Var.set depending_on 1;
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set depending_on 2;
+  Bonsai.Expert.Var.set depending_on 2;
   Handle.show handle;
   [%expect {| () |}]
 ;;
@@ -6431,11 +9132,11 @@ let%expect_test "evaluation of pure values under an assoc" =
 let%expect_test "evaluation of pure values as an input to an assoc (with a state in the \
                  assoc)"
   =
-  let depending_on = Bonsai.Var.create 0 in
-  let determines_use = Bonsai.Var.create false in
+  let depending_on = Bonsai.Expert.Var.create 0 in
+  let determines_use = Bonsai.Expert.Var.create false in
   let component graph =
     let input_map =
-      let%map depending_on = Bonsai.Var.value depending_on in
+      let%map depending_on = Bonsai.Expert.Var.value depending_on in
       print_endline "doing work";
       Int.Map.of_alist_exn [ depending_on, () ]
     in
@@ -6449,9 +9150,9 @@ let%expect_test "evaluation of pure values as an input to an assoc (with a state
             let (_ : _) = Bonsai.state () graph in
             return ())
       in
-      Bonsai.Map.cutoff intermediate ~equal:phys_equal graph
+      Bonsai.Bonsai.Map.cutoff intermediate ~equal:phys_equal graph
     in
-    match%sub Bonsai.Var.value determines_use with
+    match%sub Bonsai.Expert.Var.value determines_use with
     | true -> used_somewhere
     | false -> return Int.Map.empty
   in
@@ -6467,17 +9168,13 @@ let%expect_test "evaluation of pure values as an input to an assoc (with a state
       component
   in
   Handle.show handle;
-  [%expect
-    {|
-    doing work
-    ()
-    |}];
+  [%expect {| () |}];
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set depending_on 1;
+  Bonsai.Expert.Var.set depending_on 1;
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set depending_on 2;
+  Bonsai.Expert.Var.set depending_on 2;
   Handle.show handle;
   [%expect {| () |}]
 ;;
@@ -6485,11 +9182,11 @@ let%expect_test "evaluation of pure values as an input to an assoc (with a state
 let%expect_test "evaluation of pure values as an input to an assoc (with a \
                  state_machine_1 in the assoc)"
   =
-  let depending_on = Bonsai.Var.create 0 in
-  let determines_use = Bonsai.Var.create false in
+  let depending_on = Bonsai.Expert.Var.create 0 in
+  let determines_use = Bonsai.Expert.Var.create false in
   let component graph =
     let input_map =
-      let%map depending_on = Bonsai.Var.value depending_on in
+      let%map depending_on = Bonsai.Expert.Var.value depending_on in
       print_endline "doing work";
       Int.Map.of_alist_exn [ depending_on, () ]
     in
@@ -6509,9 +9206,9 @@ let%expect_test "evaluation of pure values as an input to an assoc (with a \
             in
             return ())
       in
-      Bonsai.Map.cutoff intermediate ~equal:phys_equal graph
+      Bonsai.Bonsai.Map.cutoff intermediate ~equal:phys_equal graph
     in
-    match%sub Bonsai.Var.value determines_use with
+    match%sub Bonsai.Expert.Var.value determines_use with
     | true -> used_somewhere
     | false -> return Int.Map.empty
   in
@@ -6534,14 +9231,14 @@ let%expect_test "evaluation of pure values as an input to an assoc (with a \
     |}];
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set depending_on 1;
+  Bonsai.Expert.Var.set depending_on 1;
   Handle.show handle;
   [%expect
     {|
     doing work
     ()
     |}];
-  Bonsai.Var.set depending_on 2;
+  Bonsai.Expert.Var.set depending_on 2;
   Handle.show handle;
   [%expect
     {|
@@ -6553,11 +9250,11 @@ let%expect_test "evaluation of pure values as an input to an assoc (with a \
 let%expect_test "evaluation of pure values as an input to an assoc (without a state in \
                  the assoc)"
   =
-  let depending_on = Bonsai.Var.create 0 in
-  let determines_use = Bonsai.Var.create false in
+  let depending_on = Bonsai.Expert.Var.create 0 in
+  let determines_use = Bonsai.Expert.Var.create false in
   let component graph =
     let input_map =
-      let%map depending_on = Bonsai.Var.value depending_on in
+      let%map depending_on = Bonsai.Expert.Var.value depending_on in
       print_endline "doing work";
       Int.Map.of_alist_exn [ depending_on, () ]
     in
@@ -6565,9 +9262,9 @@ let%expect_test "evaluation of pure values as an input to an assoc (without a st
       let intermediate =
         Bonsai.assoc (module Int) input_map graph ~f:(fun _key _data _graph -> return ())
       in
-      Bonsai.Map.cutoff intermediate ~equal:phys_equal graph
+      Bonsai.Bonsai.Map.cutoff intermediate ~equal:phys_equal graph
     in
-    match%sub Bonsai.Var.value determines_use with
+    match%sub Bonsai.Expert.Var.value determines_use with
     | true -> used_somewhere
     | false -> return Int.Map.empty
   in
@@ -6586,20 +9283,20 @@ let%expect_test "evaluation of pure values as an input to an assoc (without a st
   [%expect {| () |}];
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set depending_on 1;
+  Bonsai.Expert.Var.set depending_on 1;
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set depending_on 2;
+  Bonsai.Expert.Var.set depending_on 2;
   Handle.show handle;
   [%expect {| () |}]
 ;;
 
 let%expect_test "scope_model" =
-  let var = Bonsai.Var.create true in
+  let var = Bonsai.Expert.Var.create true in
   let component graph =
     Bonsai.scope_model
       (module Bool)
-      ~on:(Bonsai.Var.value var)
+      ~on:(Bonsai.Expert.Var.value var)
       ~for_:(fun graph ->
         let state, set_state = Bonsai.state "default" graph in
         Bonsai.both state set_state)
@@ -6621,24 +9318,24 @@ let%expect_test "scope_model" =
   Handle.do_actions handle [ "a" ];
   Handle.show handle;
   [%expect {| a |}];
-  Bonsai.Var.set var false;
+  Bonsai.Expert.Var.set var false;
   Handle.show handle;
   [%expect {| default |}];
   Handle.do_actions handle [ "b" ];
   Handle.show handle;
   [%expect {| b |}];
-  Bonsai.Var.set var true;
+  Bonsai.Expert.Var.set var true;
   Handle.show handle;
   [%expect {| a |}]
 ;;
 
 let%expect_test "scope_model_n" =
-  let var = Bonsai.Var.create true in
+  let var = Bonsai.Expert.Var.create true in
   let component graph =
     let model, inject =
       Bonsai.scope_model_n
         (module Bool)
-        ~on:(Bonsai.Var.value var)
+        ~on:(Bonsai.Expert.Var.value var)
         ~n:Two
         ~for_:(fun graph -> Bonsai.state "default" graph)
         graph
@@ -6661,27 +9358,27 @@ let%expect_test "scope_model_n" =
   Handle.do_actions handle [ "a" ];
   Handle.show handle;
   [%expect {| a |}];
-  Bonsai.Var.set var false;
+  Bonsai.Expert.Var.set var false;
   Handle.show handle;
   [%expect {| default |}];
   Handle.do_actions handle [ "b" ];
   Handle.show handle;
   [%expect {| b |}];
-  Bonsai.Var.set var true;
+  Bonsai.Expert.Var.set var true;
   Handle.show handle;
   [%expect {| a |}]
 ;;
 
 let%expect_test "thunk-storage" =
   let module Id = Core.Unique_id.Int () in
-  let var = Bonsai.Var.create true in
+  let var = Bonsai.Expert.Var.create true in
   let id graph =
     Bonsai.Expert.thunk graph ~f:(fun () ->
       print_endline "pulling id!";
       Id.create ())
   in
   let component graph =
-    if%sub Bonsai.Var.value var
+    if%sub Bonsai.Expert.Var.value var
     then (
       let%map id = id graph in
       Id.to_string id)
@@ -6694,10 +9391,10 @@ let%expect_test "thunk-storage" =
     pulling id!
     0
     |}];
-  Bonsai.Var.set var false;
+  Bonsai.Expert.Var.set var false;
   Handle.show handle;
   [%expect {| "" |}];
-  Bonsai.Var.set var true;
+  Bonsai.Expert.Var.set var true;
   Handle.show handle;
   [%expect {| 0 |}]
 ;;
@@ -6744,8 +9441,8 @@ let%expect_test "action dropped in match%sub" =
 ;;
 
 let%expect_test "let%arr cutoff destruction" =
-  let var = Bonsai.Var.create (0, 0) in
-  let value = Bonsai.Var.value var in
+  let var = Bonsai.Expert.Var.create (0, 0) in
+  let value = Bonsai.Expert.Var.value var in
   let component _graph =
     let%arr a, _ = value in
     print_endline "performing work!";
@@ -6758,11 +9455,11 @@ let%expect_test "let%arr cutoff destruction" =
     performing work!
     0
     |}];
-  Bonsai.Var.set var (0, 1);
+  Bonsai.Expert.Var.set var (0, 1);
   Handle.show handle;
   (* No work is performed! *)
   [%expect {| 0 |}];
-  Bonsai.Var.set var (1, 1);
+  Bonsai.Expert.Var.set var (1, 1);
   Handle.show handle;
   [%expect
     {|
@@ -6772,8 +9469,8 @@ let%expect_test "let%arr cutoff destruction" =
 ;;
 
 let%expect_test "let%pattern_map cutoff destruction" =
-  let var = Bonsai.Var.create (0, 0) in
-  let value = Bonsai.Var.value var in
+  let var = Bonsai.Expert.Var.create (0, 0) in
+  let value = Bonsai.Expert.Var.value var in
   let component _graph =
     let%pattern_map a, _ = value in
     print_endline "performing work!";
@@ -6786,11 +9483,11 @@ let%expect_test "let%pattern_map cutoff destruction" =
     performing work!
     0
     |}];
-  Bonsai.Var.set var (0, 1);
+  Bonsai.Expert.Var.set var (0, 1);
   Handle.show handle;
   (* No work is performed! *)
   [%expect {| 0 |}];
-  Bonsai.Var.set var (1, 1);
+  Bonsai.Expert.Var.set var (1, 1);
   Handle.show handle;
   [%expect
     {|
@@ -6800,8 +9497,8 @@ let%expect_test "let%pattern_map cutoff destruction" =
 ;;
 
 let%expect_test "let%arr cutoff destruction" =
-  let var = Bonsai.Var.create (0, 0) in
-  let value = Bonsai.Var.value var in
+  let var = Bonsai.Expert.Var.create (0, 0) in
+  let value = Bonsai.Expert.Var.value var in
   let component _graph =
     let%arr a, _ = value in
     print_endline "performing work!";
@@ -6814,11 +9511,11 @@ let%expect_test "let%arr cutoff destruction" =
     performing work!
     0
     |}];
-  Bonsai.Var.set var (0, 1);
+  Bonsai.Expert.Var.set var (0, 1);
   Handle.show handle;
   (* No work is performed! *)
   [%expect {| 0 |}];
-  Bonsai.Var.set var (1, 1);
+  Bonsai.Expert.Var.set var (1, 1);
   Handle.show handle;
   [%expect
     {|
@@ -6845,8 +9542,8 @@ module%test [@name "regression"] _ = struct
   end
 
   let%expect_test "" =
-    let state_var = Bonsai.Var.create { State.a = 2; b = 3; c = 4 } in
-    let state = Bonsai.Var.value state_var in
+    let state_var = Bonsai.Expert.Var.create { State.a = 2; b = 3; c = 4 } in
+    let state = Bonsai.Expert.Var.value state_var in
     let a _graph = Bonsai.map state ~f:State.a in
     let component b graph =
       let%map a = a graph
@@ -6862,14 +9559,14 @@ module%test [@name "regression"] _ = struct
       Recomputing ; a = 2
       5
       |}];
-    Bonsai.Var.update state_var ~f:(fun state -> { state with c = 4 });
+    Bonsai.Expert.Var.update state_var ~f:(fun state -> { state with c = 4 });
     Handle.show handle;
     [%expect {| 5 |}]
   ;;
 
   let%expect_test "" =
-    let state_var = Bonsai.Var.create { State.a = 2; b = 3; c = 4 } in
-    let state = Bonsai.Var.value state_var in
+    let state_var = Bonsai.Expert.Var.create { State.a = 2; b = 3; c = 4 } in
+    let state = Bonsai.Expert.Var.value state_var in
     let a _graph = Bonsai.map state ~f:State.a in
     let component b graph =
       let%map a = a graph
@@ -6885,15 +9582,15 @@ module%test [@name "regression"] _ = struct
       Recomputing ; a = 2
       5
       |}];
-    Bonsai.Var.update state_var ~f:(fun state -> { state with c = 4 });
+    Bonsai.Expert.Var.update state_var ~f:(fun state -> { state with c = 4 });
     Handle.show handle;
     [%expect {| 5 |}]
   ;;
 end
 
 let%expect_test "value_with_override" =
-  let default_var = Bonsai.Var.create "First Model Value" in
-  let value = Bonsai.Var.value default_var in
+  let default_var = Bonsai.Expert.Var.create "First Model Value" in
+  let value = Bonsai.Expert.Var.value default_var in
   let component graph =
     Bonsai_extra.value_with_override ~equal:[%equal: String.t] value graph
   in
@@ -6910,13 +9607,13 @@ let%expect_test "value_with_override" =
   in
   Handle.show handle;
   [%expect {| First Model Value |}];
-  Bonsai.Var.set default_var "Second Model Value";
+  Bonsai.Expert.Var.set default_var "Second Model Value";
   Handle.show handle;
   [%expect {| Second Model Value |}];
   Handle.do_actions handle [ "First Override" ];
   Handle.show handle;
   [%expect {| First Override |}];
-  Bonsai.Var.set default_var "Third Model Value";
+  Bonsai.Expert.Var.set default_var "Third Model Value";
   Handle.show handle;
   (* Changes to the variable don't matter, now that we have an override. *)
   [%expect {| First Override |}];
@@ -6926,9 +9623,9 @@ let%expect_test "value_with_override" =
 ;;
 
 let%expect_test "value_with_override in resetter" =
-  let default_var = Bonsai.Var.create "First Model Value" in
+  let default_var = Bonsai.Expert.Var.create "First Model Value" in
   let handle =
-    let value = Bonsai.Var.value default_var in
+    let value = Bonsai.Expert.Var.value default_var in
     let component graph =
       let result, reset_effect =
         Bonsai.with_model_resetter graph ~f:(fun graph ->
@@ -6957,13 +9654,13 @@ let%expect_test "value_with_override in resetter" =
   in
   Handle.show handle;
   [%expect {| First Model Value |}];
-  Bonsai.Var.set default_var "Second Model Value";
+  Bonsai.Expert.Var.set default_var "Second Model Value";
   Handle.show handle;
   [%expect {| Second Model Value |}];
   Handle.do_actions handle [ `Override "First Override" ];
   Handle.show handle;
   [%expect {| First Override |}];
-  Bonsai.Var.set default_var "Third Model Value";
+  Bonsai.Expert.Var.set default_var "Third Model Value";
   Handle.show handle;
   (* Changes to the variable don't matter, now that we have an override. *)
   [%expect {| First Override |}];
@@ -6983,7 +9680,7 @@ let%expect_test "ordering behavior of skeleton traversal" =
   let c graph =
     let all_values =
       [ return ()
-      ; Bonsai.Var.value (Bonsai.Var.create ())
+      ; Bonsai.Expert.Var.value (Bonsai.Expert.Var.create ())
       ; Bonsai.Incr.value_cutoff (return ()) ~equal:phys_equal graph
       ; Bonsai.map
           (Bonsai.both (Bonsai.return ()) (Bonsai.return ()))
@@ -7127,15 +9824,15 @@ let%expect_test "ordering behavior of skeleton traversal" =
 let%expect_test "on_activate lifecycle events are run the second frame after the \
                  component becomes active"
   =
-  let input_var = Bonsai.Var.create () in
-  let active_var = Bonsai.Var.create true in
+  let input_var = Bonsai.Expert.Var.create () in
+  let active_var = Bonsai.Expert.Var.create true in
   let component graph =
     let (_ : unit Bonsai.t), inject =
       Bonsai.state_machine1
         ~default_model:()
         ~apply_action:(fun _ctx (_ : unit Bonsai.Computation_status.t) () () ->
           print_endline "on_activate")
-        (Bonsai.Var.value input_var)
+        (Bonsai.Expert.Var.value input_var)
         graph
     in
     let on_activate =
@@ -7149,7 +9846,9 @@ let%expect_test "on_activate lifecycle events are run the second frame after the
     Handle.create
       (Result_spec.sexp (module Unit))
       (fun graph ->
-        if%sub Bonsai.Var.value active_var then component graph else component graph)
+        if%sub Bonsai.Expert.Var.value active_var
+        then component graph
+        else component graph)
   in
   (* The on_activate does not run in the first frame; rather, it is enqueued in the effect
      handler *)
@@ -7159,12 +9858,12 @@ let%expect_test "on_activate lifecycle events are run the second frame after the
   Handle.recompute_view handle;
   [%expect {| on_activate |}];
   (* Flip the var to switch the active branch *)
-  Bonsai.Var.set active_var false;
+  Bonsai.Expert.Var.set active_var false;
   (* Once again, it's enqueued on the first frame, not run *)
   Handle.recompute_view handle;
   [%expect {| |}];
   (* But now, if the active branch flips, the on_activate action is dropped! *)
-  Bonsai.Var.set active_var true;
+  Bonsai.Expert.Var.set active_var true;
   Handle.recompute_view handle;
   [%expect {| on_activate |}]
 ;;
@@ -7218,12 +9917,15 @@ let%expect_test "State machine actions that are scheduled while running the acti
 ;;
 
 let%expect_test "Bonsai.previous_value" =
-  let input_var = Bonsai.Var.create 0 in
-  let active_var = Bonsai.Var.create true in
+  let input_var = Bonsai.Expert.Var.create 0 in
+  let active_var = Bonsai.Expert.Var.create true in
   let component graph =
-    match%sub Bonsai.Var.value active_var with
+    match%sub Bonsai.Expert.Var.value active_var with
     | true ->
-      Bonsai.previous_value ~equal:[%equal: Int.t] (Bonsai.Var.value input_var) graph
+      Bonsai.previous_value
+        ~equal:[%equal: Int.t]
+        (Bonsai.Expert.Var.value input_var)
+        graph
     | false -> return None
   in
   let handle =
@@ -7238,21 +9940,21 @@ let%expect_test "Bonsai.previous_value" =
   [%expect {| () |}];
   Handle.show handle;
   [%expect {| (0) |}];
-  Bonsai.Var.set input_var 1;
+  Bonsai.Expert.Var.set input_var 1;
   Handle.show handle;
   [%expect {| (0) |}];
-  Bonsai.Var.set input_var 2;
+  Bonsai.Expert.Var.set input_var 2;
   Handle.show handle;
   [%expect {| (1) |}];
   Handle.show handle;
   [%expect {| (2) |}];
-  Bonsai.Var.set active_var false;
+  Bonsai.Expert.Var.set active_var false;
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set input_var 3;
+  Bonsai.Expert.Var.set input_var 3;
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set active_var true;
+  Bonsai.Expert.Var.set active_var true;
   Handle.show handle;
   [%expect {| (2) |}];
   Handle.show handle;
@@ -7260,13 +9962,13 @@ let%expect_test "Bonsai.previous_value" =
 ;;
 
 let%expect_test "most_recent_some" =
-  let var = Bonsai.Var.create 1 in
-  let active = Bonsai.Var.create true in
+  let var = Bonsai.Expert.Var.create 1 in
+  let active = Bonsai.Expert.Var.create true in
   let component graph =
-    match%sub Bonsai.Var.value active with
+    match%sub Bonsai.Expert.Var.value active with
     | true ->
       Bonsai.most_recent_some
-        (Bonsai.Var.value var)
+        (Bonsai.Expert.Var.value var)
         ~equal:[%equal: Int.t]
         ~f:(fun x -> if x mod 2 = 0 then Some x else None)
         graph
@@ -7282,24 +9984,24 @@ let%expect_test "most_recent_some" =
   in
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set var 2;
+  Bonsai.Expert.Var.set var 2;
   Handle.show handle;
   [%expect {| (2) |}];
   Handle.show handle;
   [%expect {| (2) |}];
-  Bonsai.Var.set active false;
+  Bonsai.Expert.Var.set active false;
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set active true;
+  Bonsai.Expert.Var.set active true;
   Handle.show handle;
   [%expect {| (2) |}];
-  Bonsai.Var.set active false;
+  Bonsai.Expert.Var.set active false;
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set var 6;
+  Bonsai.Expert.Var.set var 6;
   Handle.show handle;
   [%expect {| () |}];
-  Bonsai.Var.set active true;
+  Bonsai.Expert.Var.set active true;
   Handle.show handle;
   [%expect {| (6) |}]
 ;;
@@ -7548,8 +10250,8 @@ module%test [@name "Action delivery paths"] _ = struct
        but this test does demonstrate that action paths work as intended with lazy
        components. *)
   let%expect_test "Switch/Lazy" =
-    let lazy_branch_var = Bonsai.Var.create false in
-    let lazy_branch = Bonsai.Var.value lazy_branch_var in
+    let lazy_branch_var = Bonsai.Expert.Var.create false in
+    let lazy_branch = Bonsai.Expert.Var.value lazy_branch_var in
     let component graph =
       match%sub lazy_branch with
       | false ->
@@ -7596,7 +10298,7 @@ module%test [@name "Action delivery paths"] _ = struct
     Handle.do_actions handle [ Inject ];
     Handle.show handle;
     [%expect {| ("Processed action" (action (Switch 0 (Leaf_static <opaque>)))) |}];
-    Bonsai.Var.set lazy_branch_var true;
+    Bonsai.Expert.Var.set lazy_branch_var true;
     Handle.recompute_view_until_stable handle;
     (* And alternatively, in this case, we should go through the second branch and hit
          the lazy case *)
@@ -7606,11 +10308,11 @@ module%test [@name "Action delivery paths"] _ = struct
   ;;
 
   let%expect_test "Assoc" =
-    let input = Bonsai.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
+    let input = Bonsai.Expert.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
     let component graph =
       Bonsai.assoc
         (module Int)
-        (Bonsai.Var.value input)
+        (Bonsai.Expert.Var.value input)
         graph
         ~f:(fun _ _ graph ->
           let _, inject =
@@ -7647,7 +10349,7 @@ module%test [@name "Action delivery paths"] _ = struct
   ;;
 
   let%expect_test "Assoc_on" =
-    let input = Bonsai.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
+    let input = Bonsai.Expert.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
     let component graph =
       Bonsai.Expert.assoc_on
         (module Int)
@@ -7656,7 +10358,7 @@ module%test [@name "Action delivery paths"] _ = struct
         ~f:(fun _ _ graph ->
           let model, inject = Bonsai.state 0 graph in
           Bonsai.both model inject)
-        (Bonsai.Var.value input)
+        (Bonsai.Expert.Var.value input)
         graph
     in
     let module Action = struct
@@ -7783,6 +10485,18 @@ module%test [@name "path regression test"] _ = struct
       |}]
   ;;
 end
+
+let%expect_test "Bonsai.all does not reorder inputs" =
+  for i = 0 to 150 do
+    let list = List.init i ~f:(fun i -> return i) in
+    let component _graph = Bonsai.all list in
+    let handle = Handle.create Result_spec.invisible component in
+    let result = Handle.last_result handle in
+    assert (Int.equal (List.length result) i);
+    List.iteri result ~f:(fun i value -> assert (Int.equal i value));
+    [%expect {| |}]
+  done
+;;
 
 module%test [@name "computational shape"] _ = struct
   (* This module tests internal details of Bonsai, and the results are sensitive to implementation changes. *)
@@ -8076,5 +10790,50 @@ module%test [@name "apply action time source"] _ = struct
         Handle.advance_clock_by handle (Time_ns.Span.of_sec 1.0);
         Handle.recompute_view handle;
         [%expect {| (((for_ 3) "after waiting") (span 3s)) |}])
+  ;;
+end
+
+module%test State_vs_state_prime = struct
+  module Result_spec = struct
+    type t =
+      { result : int
+      ; the_effect : unit Effect.t
+      }
+
+    type incoming = Do_the_effect
+
+    let view t = {%string|%{t.result#Int}|}
+    let incoming { result = _; the_effect } Do_the_effect = the_effect
+  end
+
+  let state_component graph =
+    let state, set_state = Bonsai.state 0 graph in
+    let%arr state and set_state in
+    let the_effect = set_state (state + 1) in
+    { Result_spec.result = state; the_effect }
+  ;;
+
+  let state_prime_component graph =
+    let state, set_state = Bonsai.state' 0 graph in
+    let%arr state and set_state in
+    let the_effect = set_state (fun prev -> prev + 1) in
+    { Result_spec.result = state; the_effect }
+  ;;
+
+  let bisimulate_both_states ~f =
+    f state_component ~expect_diff:(fun ~state ~state':_ -> state ());
+    f state_prime_component ~expect_diff:(fun ~state:_ ~state' -> state' ())
+  ;;
+
+  let%expect_test "Bonsai.state' vs Bonsai.state" =
+    bisimulate_both_states ~f:(fun component ~expect_diff ->
+      let handle = Handle.create (module Result_spec) component in
+      Handle.show handle;
+      [%expect {| 0 |}];
+      Handle.do_actions handle [ Do_the_effect; Do_the_effect; Do_the_effect ];
+      Handle.show handle;
+      expect_diff
+        ~state:(fun () -> [%expect {| 1 |}])
+        ~state':(fun () -> [%expect {| 3 |}]))
   ;;
 end

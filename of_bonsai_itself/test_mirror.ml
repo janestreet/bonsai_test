@@ -1,30 +1,23 @@
 open! Core
 open! Import
 open! Bonsai_test
-
-module Bonsai = struct
-  include Bonsai
-  module Var = Bonsai.Proc.Var
-  module Effect = Bonsai.Effect
-end
-
 module Effect = Bonsai.Effect
 open Bonsai.Let_syntax
 
 module%test [@name "mirror with var"] _ = struct
   let prepare_test ~store ~interactive =
-    let store = Bonsai.Var.create store in
-    let interactive = Bonsai.Var.create interactive in
+    let store = Bonsai.Expert.Var.create store in
+    let interactive = Bonsai.Expert.Var.create interactive in
     let store_set =
       (fun value ->
         printf "store set to \"%s\"" value;
-        Bonsai.Var.set store value)
+        Bonsai.Expert.Var.set store value)
       |> Ui_effect.of_sync_fun
     in
     let interactive_set =
       (fun value ->
         printf "interactive set to \"%s\"" value;
-        Bonsai.Var.set interactive value)
+        Bonsai.Expert.Var.set interactive value)
       |> Ui_effect.of_sync_fun
     in
     let component graph =
@@ -33,13 +26,13 @@ module%test [@name "mirror with var"] _ = struct
           ~equal:[%equal: String.t]
           ~store_set:(return store_set)
           ~interactive_set:(return interactive_set)
-          ~store_value:(Bonsai.Var.value store)
-          ~interactive_value:(Bonsai.Var.value interactive)
+          ~store_value:(Bonsai.Expert.Var.value store)
+          ~interactive_value:(Bonsai.Expert.Var.value interactive)
           ()
           graph
       in
-      let%map store = Bonsai.Var.value store
-      and interactive = Bonsai.Var.value interactive in
+      let%map store = Bonsai.Expert.Var.value store
+      and interactive = Bonsai.Expert.Var.value interactive in
       sprintf "store: %s, interactive: %s" store interactive
     in
     let handle = Handle.create (Result_spec.string (module String)) component in
@@ -68,7 +61,7 @@ module%test [@name "mirror with var"] _ = struct
     let handle, _store, interactive = prepare_test ~store:"a" ~interactive:"a" in
     Handle.show handle;
     [%expect {| store: a, interactive: a |}];
-    Bonsai.Var.set interactive "b";
+    Bonsai.Expert.Var.set interactive "b";
     Handle.show handle;
     [%expect
       {|
@@ -83,7 +76,7 @@ module%test [@name "mirror with var"] _ = struct
     let handle, store, _interactive = prepare_test ~store:"a" ~interactive:"a" in
     Handle.show handle;
     [%expect {| store: a, interactive: a |}];
-    Bonsai.Var.set store "b";
+    Bonsai.Expert.Var.set store "b";
     Handle.show handle;
     [%expect
       {|
@@ -98,8 +91,8 @@ module%test [@name "mirror with var"] _ = struct
     let handle, store, interactive = prepare_test ~store:"a" ~interactive:"a" in
     Handle.show handle;
     [%expect {| store: a, interactive: a |}];
-    Bonsai.Var.set store "b";
-    Bonsai.Var.set interactive "c";
+    Bonsai.Expert.Var.set store "b";
+    Bonsai.Expert.Var.set interactive "c";
     Handle.show handle;
     [%expect
       {|
@@ -114,21 +107,21 @@ module%test [@name "mirror with var"] _ = struct
     let handle, _store, interactive = prepare_test ~store:"a" ~interactive:"a" in
     Handle.show handle;
     [%expect {| store: a, interactive: a |}];
-    Bonsai.Var.set interactive "b";
+    Bonsai.Expert.Var.set interactive "b";
     Handle.show handle;
     [%expect
       {|
       store: a, interactive: b
       store set to "b"
       |}];
-    Bonsai.Var.set interactive "c";
+    Bonsai.Expert.Var.set interactive "c";
     Handle.show handle;
     [%expect
       {|
       store: b, interactive: c
       store set to "c"
       |}];
-    Bonsai.Var.set interactive "d";
+    Bonsai.Expert.Var.set interactive "d";
     Handle.show handle;
     [%expect
       {|
@@ -143,21 +136,21 @@ module%test [@name "mirror with var"] _ = struct
     let handle, store, _interactive = prepare_test ~store:"a" ~interactive:"a" in
     Handle.show handle;
     [%expect {| store: a, interactive: a |}];
-    Bonsai.Var.set store "b";
+    Bonsai.Expert.Var.set store "b";
     Handle.show handle;
     [%expect
       {|
       store: b, interactive: a
       interactive set to "b"
       |}];
-    Bonsai.Var.set store "c";
+    Bonsai.Expert.Var.set store "c";
     Handle.show handle;
     [%expect
       {|
       store: c, interactive: b
       store set to "b"
       |}];
-    Bonsai.Var.set store "d";
+    Bonsai.Expert.Var.set store "d";
     Handle.show handle;
     [%expect
       {|
@@ -374,18 +367,18 @@ end
 
 module%test [@name "mirror' with var"] _ = struct
   let prepare_test ~store ~interactive =
-    let store = Bonsai.Var.create store in
-    let interactive = Bonsai.Var.create interactive in
+    let store = Bonsai.Expert.Var.create store in
+    let interactive = Bonsai.Expert.Var.create interactive in
     let store_set =
       (fun value ->
         printf "store set to \"%s\"" value;
-        Bonsai.Var.set store (Some value))
+        Bonsai.Expert.Var.set store (Some value))
       |> Ui_effect.of_sync_fun
     in
     let interactive_set =
       (fun value ->
         printf "interactive set to \"%s\"" value;
-        Bonsai.Var.set interactive (Some value))
+        Bonsai.Expert.Var.set interactive (Some value))
       |> Ui_effect.of_sync_fun
     in
     let component graph =
@@ -395,12 +388,12 @@ module%test [@name "mirror' with var"] _ = struct
           ~equal:[%equal: String.t]
           ~store_set:(return store_set)
           ~interactive_set:(return interactive_set)
-          ~store_value:(Bonsai.Var.value store)
-          ~interactive_value:(Bonsai.Var.value interactive)
+          ~store_value:(Bonsai.Expert.Var.value store)
+          ~interactive_value:(Bonsai.Expert.Var.value interactive)
           graph
       in
-      let%map store = Bonsai.Var.value store
-      and interactive = Bonsai.Var.value interactive in
+      let%map store = Bonsai.Expert.Var.value store
+      and interactive = Bonsai.Expert.Var.value interactive in
       sprintf
         "store: %s, interactive: %s"
         (Option.value store ~default:"<none>")
@@ -470,7 +463,7 @@ module%test [@name "mirror' with var"] _ = struct
     let handle, store, _interactive = prepare_test ~store:None ~interactive:None in
     Handle.show handle;
     [%expect {| store: <none>, interactive: <none> |}];
-    Bonsai.Var.set store (Some "hi");
+    Bonsai.Expert.Var.set store (Some "hi");
     Handle.show handle;
     [%expect
       {|
@@ -485,7 +478,7 @@ module%test [@name "mirror' with var"] _ = struct
     let handle, _store, interactive = prepare_test ~store:None ~interactive:None in
     Handle.show handle;
     [%expect {| store: <none>, interactive: <none> |}];
-    Bonsai.Var.set interactive (Some "hi");
+    Bonsai.Expert.Var.set interactive (Some "hi");
     Handle.show handle;
     [%expect
       {|
@@ -500,8 +493,8 @@ module%test [@name "mirror' with var"] _ = struct
     let handle, store, interactive = prepare_test ~store:None ~interactive:None in
     Handle.show handle;
     [%expect {| store: <none>, interactive: <none> |}];
-    Bonsai.Var.set interactive (Some "hi");
-    Bonsai.Var.set store (Some "hi");
+    Bonsai.Expert.Var.set interactive (Some "hi");
+    Bonsai.Expert.Var.set store (Some "hi");
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
   ;;
@@ -510,8 +503,8 @@ module%test [@name "mirror' with var"] _ = struct
     let handle, store, interactive = prepare_test ~store:None ~interactive:None in
     Handle.show handle;
     [%expect {| store: <none>, interactive: <none> |}];
-    Bonsai.Var.set interactive (Some "hi");
-    Bonsai.Var.set store (Some "hello");
+    Bonsai.Expert.Var.set interactive (Some "hi");
+    Bonsai.Expert.Var.set store (Some "hello");
     Handle.show handle;
     [%expect
       {|
@@ -528,8 +521,8 @@ module%test [@name "mirror' with var"] _ = struct
     in
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}];
-    Bonsai.Var.set interactive (Some "abc");
-    Bonsai.Var.set store (Some "def");
+    Bonsai.Expert.Var.set interactive (Some "abc");
+    Bonsai.Expert.Var.set store (Some "def");
     Handle.show handle;
     [%expect
       {|
@@ -546,7 +539,7 @@ module%test [@name "mirror' with var"] _ = struct
     in
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}];
-    Bonsai.Var.set store None;
+    Bonsai.Expert.Var.set store None;
     Handle.show handle;
     (* The noneness isn't propagated to interactive *)
     [%expect {| store: <none>, interactive: hi |}]
@@ -558,7 +551,7 @@ module%test [@name "mirror' with var"] _ = struct
     in
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}];
-    Bonsai.Var.set interactive None;
+    Bonsai.Expert.Var.set interactive None;
     Handle.show handle;
     (* The noneness isn't propagated to the store *)
     [%expect {| store: hi, interactive: <none> |}]
@@ -570,8 +563,8 @@ module%test [@name "mirror' with var"] _ = struct
     in
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}];
-    Bonsai.Var.set store None;
-    Bonsai.Var.set interactive None;
+    Bonsai.Expert.Var.set store None;
+    Bonsai.Expert.Var.set interactive None;
     Handle.show handle;
     (* The noneness isn't propagated to the store *)
     [%expect {| store: <none>, interactive: <none> |}]
@@ -583,11 +576,11 @@ module%test [@name "mirror' with var"] _ = struct
     in
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}];
-    Bonsai.Var.set store None;
+    Bonsai.Expert.Var.set store None;
     Handle.show handle;
     [%expect {| store: <none>, interactive: hi |}];
-    Bonsai.Var.set store (Some "abc");
-    Bonsai.Var.set interactive None;
+    Bonsai.Expert.Var.set store (Some "abc");
+    Bonsai.Expert.Var.set interactive None;
     Handle.show handle;
     [%expect
       {|
@@ -604,11 +597,11 @@ module%test [@name "mirror' with var"] _ = struct
     in
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}];
-    Bonsai.Var.set interactive None;
+    Bonsai.Expert.Var.set interactive None;
     Handle.show handle;
     [%expect {| store: hi, interactive: <none> |}];
-    Bonsai.Var.set interactive (Some "abc");
-    Bonsai.Var.set store None;
+    Bonsai.Expert.Var.set interactive (Some "abc");
+    Bonsai.Expert.Var.set store None;
     Handle.show handle;
     [%expect
       {|

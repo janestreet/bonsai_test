@@ -2,7 +2,7 @@
  (name bonsai_test)
  (public_name bonsai_test)
  (libraries bonsai bonsai.driver bonsai.perf_shared
-   async_js.test_handle_garbage_collector core_kernel.composition_infix core
+   async_js.test_handle_garbage_collector base.composition_infix core
    ppx_expect.config_types expect_test_helpers_core.expect_test_helpers_base
    expect_test_helpers_core patdiff.expect_test_patdiff expectable
    incremental incremental.skeleton patdiff.kernel virtual_dom.ui_effect

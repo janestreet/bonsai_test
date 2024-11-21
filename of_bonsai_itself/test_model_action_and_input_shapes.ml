@@ -291,8 +291,8 @@ module%test [@name "assoc"] _ = struct
           (action (Assoc "key id" (Leaf Nothing.t)))
           (input (optional unit))))
         (incr_graph (
-          (nodes 10)
-          (edges 9))))
+          (nodes 7)
+          (edges 4))))
 
       ("with optimizations"
         (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
@@ -320,8 +320,8 @@ module%test [@name "assoc"] _ = struct
               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
           (input (optional unit))))
         (incr_graph (
-          (nodes 10)
-          (edges 9))))
+          (nodes 7)
+          (edges 4))))
       |}]
   ;;
 
@@ -366,8 +366,8 @@ module%test [@name "assoc_on"] _ = struct
           (action (Assoc "io key id" "model key id" (Leaf Nothing.t)))
           (input (optional unit))))
         (incr_graph (
-          (nodes 8)
-          (edges 7))))
+          (nodes 5)
+          (edges 2))))
 
       ("with optimizations"
         (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
@@ -397,8 +397,8 @@ module%test [@name "assoc_on"] _ = struct
               lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
           (input (optional unit))))
         (incr_graph (
-          (nodes 8)
-          (edges 7))))
+          (nodes 5)
+          (edges 2))))
       |}]
   ;;
 end

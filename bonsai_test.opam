@@ -13,15 +13,16 @@ depends: [
   "ocaml" {>= "5.1.0"}
   "async"
   "async_js"
+  "base"
   "bonsai"
   "bonsai_concrete"
   "core"
-  "core_kernel"
   "core_unix"
   "expect_test_helpers_core"
   "expectable"
   "incr_map"
   "incremental"
+  "ocaml-embed-file"
   "patdiff"
   "ppx_expect"
   "ppx_jane"
@@ -29,7 +30,6 @@ depends: [
   "ppx_quick_test"
   "virtual_dom"
   "dune"                     {>= "3.11.0"}
-  "ocaml-embed-file"
   "re"                       {>= "1.8.0"}
 ]
 available: arch != "arm32" & arch != "x86_32"

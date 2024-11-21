@@ -1,7 +1,6 @@
 open! Core
-open! Bonsai.Cont
+open! Bonsai
 open! Bonsai_test
-module Bonsai = Bonsai.Cont
 
 let seconds n = Time_ns.of_span_since_epoch (Time_ns.Span.of_sec (Int.to_float n))
 

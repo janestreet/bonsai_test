@@ -5760,11 +5760,7 @@ let%expect_test {|evaluation of pure values as an input to an assoc (with a stat
       component
   in
   Handle.show handle;
-  [%expect
-    {|
-    doing work
-    ()
-    |}];
+  [%expect {| () |}];
   Handle.show handle;
   [%expect {| () |}];
   Bonsai.Var.set depending_on 1;
@@ -6948,5 +6944,50 @@ module%test [@name "computational shape"] _ = struct
       bonsai_path_y_x_y_y
       bonsai_path_y_y
       |}]
+  ;;
+end
+
+module%test State_vs_state_prime = struct
+  module Result_spec = struct
+    type t =
+      { result : int
+      ; the_effect : unit Effect.t
+      }
+
+    type incoming = Do_the_effect
+
+    let view t = {%string|%{t.result#Int}|}
+    let incoming { result = _; the_effect } Do_the_effect = the_effect
+  end
+
+  let state_component =
+    let%sub state, set_state = Bonsai.state 0 in
+    let%arr state and set_state in
+    let the_effect = set_state (state + 1) in
+    { Result_spec.result = state; the_effect }
+  ;;
+
+  let state_prime_component =
+    let%sub state, set_state = Bonsai.state' 0 in
+    let%arr state and set_state in
+    let the_effect = set_state (fun prev -> prev + 1) in
+    { Result_spec.result = state; the_effect }
+  ;;
+
+  let bisimulate_both_states ~f =
+    f state_component ~expect_diff:(fun ~state ~state':_ -> state ());
+    f state_prime_component ~expect_diff:(fun ~state:_ ~state' -> state' ())
+  ;;
+
+  let%expect_test "Bonsai.state' vs Bonsai.state" =
+    bisimulate_both_states ~f:(fun component ~expect_diff ->
+      let handle = Handle.create (module Result_spec) component in
+      Handle.show handle;
+      [%expect {| 0 |}];
+      Handle.do_actions handle [ Do_the_effect; Do_the_effect; Do_the_effect ];
+      Handle.show handle;
+      expect_diff
+        ~state:(fun () -> [%expect {| 1 |}])
+        ~state':(fun () -> [%expect {| 3 |}]))
   ;;
 end

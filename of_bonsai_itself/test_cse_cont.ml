@@ -1,12 +1,6 @@
 open! Core
 open! Import
 open Bonsai_test
-
-module Bonsai = struct
-  include Bonsai.Cont
-  module Private = Bonsai.Private
-end
-
 open Bonsai.Let_syntax
 
 let dummy_value () =
