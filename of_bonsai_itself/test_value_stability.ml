@@ -1,8 +1,7 @@
 open! Core
 open! Import
 open Bonsai_test
-module Bonsai = Bonsai.Proc
-open Bonsai.For_open
+open Bonsai
 open Bonsai.Let_syntax
 
 (* A big focus of the tests in this file is about making sure that there are no
@@ -27,8 +26,9 @@ module%test [@name "Bonsai_extra.with_last_modified_time"] _ = struct
   module Common (M : sig
       val with_last_modified_time
         :  equal:('a -> 'a -> bool)
-        -> 'a Value.t
-        -> ('a * Time_ns.t) Computation.t
+        -> 'a Bonsai.t
+        -> local_ Bonsai.graph
+        -> 'a Bonsai.t * Time_ns.t Bonsai.t
 
       val show_handle : ('a, 'b) Handle.t -> unit
     end) =
@@ -36,9 +36,12 @@ module%test [@name "Bonsai_extra.with_last_modified_time"] _ = struct
     let show = M.show_handle
 
     let%expect_test _ =
-      let v' = Bonsai.Var.create 1 in
-      let v = Bonsai.Var.value v' in
-      let c = M.with_last_modified_time ~equal:Int.equal v in
+      let v' = Bonsai.Expert.Var.create 1 in
+      let v = Bonsai.Expert.Var.value v' in
+      let c (local_ graph) =
+        let value, time = M.with_last_modified_time ~equal:Int.equal v graph in
+        Bonsai.both value time
+      in
       let handle =
         Handle.create
           (Result_spec.sexp
@@ -52,10 +55,10 @@ module%test [@name "Bonsai_extra.with_last_modified_time"] _ = struct
       advance_by_sec handle 1.0;
       show handle;
       [%expect {| (1 "1970-01-01 00:00:00Z") |}];
-      Bonsai.Var.set v' 2;
+      Bonsai.Expert.Var.set v' 2;
       show handle;
       [%expect {| (2 "1970-01-01 00:00:01Z") |}];
-      Bonsai.Var.set v' 3;
+      Bonsai.Expert.Var.set v' 3;
       advance_by_sec handle 1.0;
       show handle;
       [%expect {| (3 "1970-01-01 00:00:02Z") |}];
@@ -64,17 +67,17 @@ module%test [@name "Bonsai_extra.with_last_modified_time"] _ = struct
     ;;
 
     let%expect_test _ =
-      let v' = Bonsai.Var.create 1 in
-      let on' = Bonsai.Var.create true in
-      let v = Bonsai.Var.value v' in
-      let on = Bonsai.Var.value on' in
-      let c =
+      let v' = Bonsai.Expert.Var.create 1 in
+      let on' = Bonsai.Expert.Var.create true in
+      let v = Bonsai.Expert.Var.value v' in
+      let on = Bonsai.Expert.Var.value on' in
+      let c (local_ graph) =
         match%sub on with
         | true ->
-          let%sub x = M.with_last_modified_time ~equal:Int.equal v in
-          let%arr x in
-          Some x
-        | false -> Bonsai.const None
+          let value, time = M.with_last_modified_time ~equal:Int.equal v graph in
+          let%arr value and time in
+          Some (value, time)
+        | false -> Bonsai.return None
       in
       let handle =
         Handle.create
@@ -89,25 +92,25 @@ module%test [@name "Bonsai_extra.with_last_modified_time"] _ = struct
       advance_by_sec handle 1.0;
       show handle;
       [%expect {| ((1 "1970-01-01 00:00:00Z")) |}];
-      Bonsai.Var.set on' false;
+      Bonsai.Expert.Var.set on' false;
       show handle;
       [%expect {| () |}];
-      Bonsai.Var.set on' true;
+      Bonsai.Expert.Var.set on' true;
       show handle;
       [%expect {| ((1 "1970-01-01 00:00:01Z")) |}];
-      Bonsai.Var.set on' false;
+      Bonsai.Expert.Var.set on' false;
       show handle;
       [%expect {| () |}];
       advance_by_sec handle 1.0;
       show handle;
       [%expect {| () |}];
-      Bonsai.Var.set on' true;
+      Bonsai.Expert.Var.set on' true;
       show handle;
       [%expect {| ((1 "1970-01-01 00:00:02Z")) |}];
       advance_by_sec handle 1.0;
       show handle;
       [%expect {| ((1 "1970-01-01 00:00:02Z")) |}];
-      Bonsai.Var.set v' 2;
+      Bonsai.Expert.Var.set v' 2;
       show handle;
       [%expect {| ((2 "1970-01-01 00:00:03Z")) |}]
     ;;
@@ -115,7 +118,7 @@ module%test [@name "Bonsai_extra.with_last_modified_time"] _ = struct
 
   module _ = Common (struct
       let with_last_modified_time = Bonsai_extra.with_last_modified_time
-      let show_handle = Handle.show
+      let show_handle handle = Handle.show handle
     end)
 
   module _ = Common (struct
@@ -141,9 +144,10 @@ module%test [@name "Bonsai_extra.is_stable"] _ = struct
   module Common (M : sig
       val is_stable
         :  equal:('a -> 'a -> bool)
-        -> 'a Value.t
-        -> time_to_stable:Time_ns.Span.t Value.t
-        -> bool Computation.t
+        -> 'a Bonsai.t
+        -> time_to_stable:Time_ns.Span.t Bonsai.t
+        -> local_ Bonsai.graph
+        -> bool Bonsai.t
 
       val show_handle : ('a, 'b) Handle.t -> unit
     end) =
@@ -151,27 +155,31 @@ module%test [@name "Bonsai_extra.is_stable"] _ = struct
     let show = M.show_handle
 
     type controls =
-      { v' : int Bonsai.Var.t
-      ; on' : bool Bonsai.Var.t
-      ; span : Time_ns.Span.t Bonsai.Var.t
+      { v' : int Bonsai.Expert.Var.t
+      ; on' : bool Bonsai.Expert.Var.t
+      ; span : Time_ns.Span.t Bonsai.Expert.Var.t
       }
 
     let gen_handle ~initial_span_secs =
-      let span = Bonsai.Var.create (Time_ns.Span.of_sec initial_span_secs) in
-      let v' = Bonsai.Var.create 1 in
-      let on' = Bonsai.Var.create true in
+      let span = Bonsai.Expert.Var.create (Time_ns.Span.of_sec initial_span_secs) in
+      let v' = Bonsai.Expert.Var.create 1 in
+      let on' = Bonsai.Expert.Var.create true in
       let controls = { span; v'; on' } in
-      let v = Bonsai.Var.value v' in
-      let on = Bonsai.Var.value on' in
-      let c =
+      let v = Bonsai.Expert.Var.value v' in
+      let on = Bonsai.Expert.Var.value on' in
+      let c (local_ graph) =
         match%sub on with
         | true ->
-          let%sub x =
-            M.is_stable ~equal:Int.equal v ~time_to_stable:(Bonsai.Var.value span)
+          let x =
+            M.is_stable
+              ~equal:Int.equal
+              v
+              ~time_to_stable:(Bonsai.Expert.Var.value span)
+              graph
           in
           let%arr x and v in
           Some (x, v)
-        | false -> Bonsai.const None
+        | false -> Bonsai.return None
       in
       let handle =
         Handle.create
@@ -191,13 +199,13 @@ module%test [@name "Bonsai_extra.is_stable"] _ = struct
       advance_by_sec handle 1.0;
       show handle;
       [%expect {| ((true 1)) |}];
-      Bonsai.Var.set controls.v' 2;
+      Bonsai.Expert.Var.set controls.v' 2;
       show handle;
       [%expect {| ((false 2)) |}];
       advance_by_sec handle 0.5;
       show handle;
       [%expect {| ((false 2)) |}];
-      Bonsai.Var.set controls.v' 3;
+      Bonsai.Expert.Var.set controls.v' 3;
       show handle;
       [%expect {| ((false 3)) |}];
       advance_by_sec handle 0.5;
@@ -206,22 +214,22 @@ module%test [@name "Bonsai_extra.is_stable"] _ = struct
       advance_by_sec handle 0.5;
       show handle;
       [%expect {| ((true 3)) |}];
-      Bonsai.Var.set controls.v' 4;
+      Bonsai.Expert.Var.set controls.v' 4;
       show handle;
       [%expect {| ((false 4)) |}];
       advance_by_sec handle 1.0;
-      Bonsai.Var.set controls.v' 5;
+      Bonsai.Expert.Var.set controls.v' 5;
       show handle;
       [%expect {| ((false 5)) |}];
       advance_by_sec handle 1.0;
       show handle;
       [%expect {| ((true 5)) |}];
       advance_by_sec handle 0.5;
-      Bonsai.Var.set controls.v' 4;
+      Bonsai.Expert.Var.set controls.v' 4;
       show handle;
       [%expect {| ((false 4)) |}];
       advance_by_sec handle 0.5;
-      Bonsai.Var.set controls.v' 5;
+      Bonsai.Expert.Var.set controls.v' 5;
       show handle;
       [%expect {| ((false 5)) |}]
     ;;
@@ -234,10 +242,10 @@ module%test [@name "Bonsai_extra.is_stable"] _ = struct
       advance_by_sec handle 1.0;
       show handle;
       [%expect {| ((true 1)) |}];
-      Bonsai.Var.set controls.on' false;
+      Bonsai.Expert.Var.set controls.on' false;
       show handle;
       [%expect {| () |}];
-      Bonsai.Var.set controls.on' true;
+      Bonsai.Expert.Var.set controls.on' true;
       show handle;
       [%expect {| ((false 1)) |}]
     ;;
@@ -261,10 +269,10 @@ module%test [@name "Bonsai_extra.is_stable"] _ = struct
       advance_by_sec handle 1.0;
       show handle;
       [%expect {| ((true 1)) |}];
-      Bonsai.Var.set controls.on' false;
+      Bonsai.Expert.Var.set controls.on' false;
       show handle;
       [%expect {| () |}];
-      Bonsai.Var.set controls.on' true;
+      Bonsai.Expert.Var.set controls.on' true;
       show handle;
       print_sorted_expect_test_output [%expect.output];
       [%expect {| ((true 1)) |}]
@@ -289,8 +297,8 @@ module%test [@name "Bonsai_extra.is_stable"] _ = struct
       advance_by_sec handle 2.;
       show handle;
       [%expect {| ((true 1)) |}];
-      Bonsai.Var.set controls.v' 4;
-      Bonsai.Var.set controls.span (Time_ns.Span.of_sec 5.);
+      Bonsai.Expert.Var.set controls.v' 4;
+      Bonsai.Expert.Var.set controls.span (Time_ns.Span.of_sec 5.);
       show handle;
       [%expect {| ((false 4)) |}];
       advance_by_sec handle 2.;
@@ -299,13 +307,13 @@ module%test [@name "Bonsai_extra.is_stable"] _ = struct
       advance_by_sec handle 4.;
       show handle;
       [%expect {| ((true 4)) |}];
-      Bonsai.Var.set controls.v' 6;
-      Bonsai.Var.set controls.span (Time_ns.Span.of_sec 0.);
+      Bonsai.Expert.Var.set controls.v' 6;
+      Bonsai.Expert.Var.set controls.span (Time_ns.Span.of_sec 0.);
       show handle;
       print_sorted_expect_test_output [%expect.output];
       [%expect {| ((true 6)) |}];
-      Bonsai.Var.set controls.v' 999;
-      Bonsai.Var.set controls.span (Time_ns.Span.of_sec (-1.));
+      Bonsai.Expert.Var.set controls.v' 999;
+      Bonsai.Expert.Var.set controls.span (Time_ns.Span.of_sec (-1.));
       show handle;
       print_sorted_expect_test_output [%expect.output];
       [%expect
@@ -313,8 +321,8 @@ module%test [@name "Bonsai_extra.is_stable"] _ = struct
         "Bonsai_extra.is_stable: [time_to_stable] should not be negative"
         ((true 999))
         |}];
-      Bonsai.Var.set controls.v' 17;
-      Bonsai.Var.set controls.span (Time_ns.Span.of_sec 1.);
+      Bonsai.Expert.Var.set controls.v' 17;
+      Bonsai.Expert.Var.set controls.span (Time_ns.Span.of_sec 1.);
       show handle;
       [%expect {| ((false 17)) |}];
       advance_by_sec handle 2.;
@@ -329,10 +337,10 @@ module%test [@name "Bonsai_extra.is_stable"] _ = struct
       advance_by_sec handle 1.;
       show handle;
       [%expect {| ((true 1)) |}];
-      Bonsai.Var.set controls.span (Time_ns.Span.of_sec 1.5);
+      Bonsai.Expert.Var.set controls.span (Time_ns.Span.of_sec 1.5);
       show handle;
       [%expect {| ((false 1)) |}];
-      Bonsai.Var.set controls.span (Time_ns.Span.of_sec 0.5);
+      Bonsai.Expert.Var.set controls.span (Time_ns.Span.of_sec 0.5);
       show handle;
       [%expect {| ((true 1)) |}]
     ;;
@@ -340,7 +348,7 @@ module%test [@name "Bonsai_extra.is_stable"] _ = struct
 
   module _ = Common (struct
       let is_stable = Bonsai_extra.is_stable
-      let show_handle = Handle.show
+      let show_handle handle = Handle.show handle
     end)
 
   module _ = Common (struct
@@ -368,9 +376,10 @@ module%test [@name "Bonsai.most_recent_value_satisfying"] _ = struct
         :  here:[%call_pos]
         -> ?sexp_of_model:('a -> Sexp.t)
         -> equal:('a -> 'a -> bool)
-        -> 'a Value.t
+        -> 'a Bonsai.t
         -> condition:('a -> bool)
-        -> 'a option Computation.t
+        -> local_ Bonsai.graph
+        -> 'a option Bonsai.t
 
       val show_handle : ('a, 'b) Handle.t -> unit
     end) =
@@ -378,8 +387,8 @@ module%test [@name "Bonsai.most_recent_value_satisfying"] _ = struct
     let show = M.show_handle
 
     let%expect_test _ =
-      let v' = Bonsai.Var.create 1 in
-      let v = Bonsai.Var.value v' in
+      let v' = Bonsai.Expert.Var.create 1 in
+      let v = Bonsai.Expert.Var.value v' in
       let c =
         M.most_recent_value_satisfying
           ~sexp_of_model:[%sexp_of: Int.t]
@@ -397,35 +406,36 @@ module%test [@name "Bonsai.most_recent_value_satisfying"] _ = struct
       in
       show handle;
       [%expect {| () |}];
-      Bonsai.Var.set v' 2;
+      Bonsai.Expert.Var.set v' 2;
       show handle;
       [%expect {| (2) |}];
-      Bonsai.Var.set v' 3;
+      Bonsai.Expert.Var.set v' 3;
       show handle;
       [%expect {| (2) |}];
-      Bonsai.Var.set v' 4;
+      Bonsai.Expert.Var.set v' 4;
       show handle;
       [%expect {| (4) |}]
     ;;
 
     let%expect_test _ =
-      let v' = Bonsai.Var.create 1 in
-      let on' = Bonsai.Var.create true in
-      let v = Bonsai.Var.value v' in
-      let on = Bonsai.Var.value on' in
-      let c =
+      let v' = Bonsai.Expert.Var.create 1 in
+      let on' = Bonsai.Expert.Var.create true in
+      let v = Bonsai.Expert.Var.value v' in
+      let on = Bonsai.Expert.Var.value on' in
+      let c (local_ graph) =
         match%sub on with
         | true ->
-          let%sub x =
+          let x =
             M.most_recent_value_satisfying
               ~sexp_of_model:[%sexp_of: Int.t]
               ~equal:[%equal: Int.t]
               v
               ~condition:(fun x -> x % 2 = 0)
+              graph
           in
           let%arr x in
           Some x
-        | false -> Bonsai.const None
+        | false -> Bonsai.return None
       in
       let handle =
         Handle.create
@@ -437,16 +447,16 @@ module%test [@name "Bonsai.most_recent_value_satisfying"] _ = struct
       in
       show handle;
       [%expect {| (()) |}];
-      Bonsai.Var.set v' 2;
+      Bonsai.Expert.Var.set v' 2;
       show handle;
       [%expect {| ((2)) |}];
-      Bonsai.Var.set on' false;
+      Bonsai.Expert.Var.set on' false;
       show handle;
       [%expect {| () |}];
-      Bonsai.Var.set v' 3;
+      Bonsai.Expert.Var.set v' 3;
       show handle;
       [%expect {| () |}];
-      Bonsai.Var.set on' true;
+      Bonsai.Expert.Var.set on' true;
       show handle;
       [%expect {| ((2)) |}]
     ;;
@@ -454,7 +464,7 @@ module%test [@name "Bonsai.most_recent_value_satisfying"] _ = struct
 
   module _ = Common (struct
       let most_recent_value_satisfying = Bonsai.most_recent_value_satisfying
-      let show_handle = Handle.show
+      let show_handle handle = Handle.show handle
     end)
 
   module _ = Common (struct
@@ -483,6 +493,7 @@ module%test [@name "Bonsai_extra.value_stability"] _ = struct
     ~equal
     input
     ~time_to_stable
+    (local_ graph)
     =
     let module M = struct
       type t = a
@@ -490,9 +501,9 @@ module%test [@name "Bonsai_extra.value_stability"] _ = struct
       let sexp_of_t = Option.value ~default:sexp_of_opaque sexp_of_model
     end
     in
-    let%sub input =
+    let input =
       (* apply cutoff as an optimistic performance improvement *)
-      Bonsai.Incr.value_cutoff input ~equal
+      Bonsai.Incr.value_cutoff input ~equal graph
     in
     let module T = struct
       module Model = struct
@@ -541,69 +552,71 @@ module%test [@name "Bonsai_extra.value_stability"] _ = struct
     in
     let open T in
     let%sub { stability; time_to_next_stable }, inject =
-      Bonsai.state_machine1
-        time_to_stable
-        ~sexp_of_model:[%sexp_of: Model.t]
-        ~equal:[%equal: Model.t]
-        ~sexp_of_action:[%sexp_of: Action.t]
-        ~default_model:Model.default
-        ~apply_action:
-          (fun
-            (_ : _ Bonsai.Apply_action_context.t) time_to_stable model action ->
-          match action, model, time_to_stable with
-          | _, _, Inactive -> model
-          | Deactivate, { stability; _ }, _ ->
-            let stability =
-              match stability with
-              | Inactive _ -> stability
-              | Unstable { previously_stable; _ } -> Inactive { previously_stable }
-              | Stable stable -> Inactive { previously_stable = Some stable }
-            in
-            (* Deactivating this component will automatically cause the value to be
+      Tuple2.uncurry Bonsai.both
+      @@ Bonsai.state_machine_with_input
+           time_to_stable
+           ~sexp_of_model:[%sexp_of: Model.t]
+           ~equal:[%equal: Model.t]
+           ~sexp_of_action:[%sexp_of: Action.t]
+           ~default_model:Model.default
+           ~apply_action:
+             (fun
+               (_ : _ Bonsai.Apply_action_context.t) time_to_stable model action ->
+             match action, model, time_to_stable with
+             | _, _, Inactive -> model
+             | Deactivate, { stability; _ }, _ ->
+               let stability =
+                 match stability with
+                 | Inactive _ -> stability
+                 | Unstable { previously_stable; _ } -> Inactive { previously_stable }
+                 | Stable stable -> Inactive { previously_stable = Some stable }
+               in
+               (* Deactivating this component will automatically cause the value to be
                    considered unstable.  This is because we have no way to tell what is
                    happening to the value when this component is inactive, and I consider
                    it safer to assume instability than to assume stability. *)
-            { stability; time_to_next_stable = None }
-          | Bounce (new_value, now), { stability; _ }, Active time_to_stable ->
-            (* Bouncing will cause the value to become unstable, and set the
+               { stability; time_to_next_stable = None }
+             | Bounce (new_value, now), { stability; _ }, Active time_to_stable ->
+               (* Bouncing will cause the value to become unstable, and set the
                    time-to-next-stable to the provided value. *)
-            let stability = Model.set_value new_value stability in
-            let time_to_next_stable = Some (Time_ns.add now time_to_stable) in
-            { stability; time_to_next_stable }
-          | ( Set_stable (stable, now)
-            , { stability; time_to_next_stable }
-            , Active time_to_stable ) ->
-            (* Sets the value which is considered to be stable and resets
+               let stability = Model.set_value new_value stability in
+               let time_to_next_stable = Some (Time_ns.add now time_to_stable) in
+               { stability; time_to_next_stable }
+             | ( Set_stable (stable, now)
+               , { stability; time_to_next_stable }
+               , Active time_to_stable ) ->
+               (* Sets the value which is considered to be stable and resets
                    the time until next stability. *)
-            (match stability with
-             | Inactive { previously_stable } ->
-               { stability = Unstable { previously_stable; unstable_value = stable }
-               ; time_to_next_stable = Some (Time_ns.add now time_to_stable)
-               }
-             | Stable previously_stable ->
-               if equal previously_stable stable
-               then { stability = Stable stable; time_to_next_stable = None }
-               else
-                 { stability =
-                     Unstable
-                       { unstable_value = stable
-                       ; previously_stable = Some previously_stable
-                       }
-                 ; time_to_next_stable = Some (Time_ns.add now time_to_stable)
-                 }
-             | Unstable { unstable_value; previously_stable } ->
-               let candidate_time_to_next_stable = Time_ns.add now time_to_stable in
-               (match equal unstable_value stable, time_to_next_stable with
-                | true, Some time_to_next_stable
-                  when Time_ns.( >= ) now time_to_next_stable ->
-                  { stability = Stable stable; time_to_next_stable = None }
-                | _ ->
-                  { stability = Unstable { unstable_value = stable; previously_stable }
-                  ; time_to_next_stable = Some candidate_time_to_next_stable
-                  })))
+               (match stability with
+                | Inactive { previously_stable } ->
+                  { stability = Unstable { previously_stable; unstable_value = stable }
+                  ; time_to_next_stable = Some (Time_ns.add now time_to_stable)
+                  }
+                | Stable previously_stable ->
+                  if equal previously_stable stable
+                  then { stability = Stable stable; time_to_next_stable = None }
+                  else
+                    { stability =
+                        Unstable
+                          { unstable_value = stable
+                          ; previously_stable = Some previously_stable
+                          }
+                    ; time_to_next_stable = Some (Time_ns.add now time_to_stable)
+                    }
+                | Unstable { unstable_value; previously_stable } ->
+                  let candidate_time_to_next_stable = Time_ns.add now time_to_stable in
+                  (match equal unstable_value stable, time_to_next_stable with
+                   | true, Some time_to_next_stable
+                     when Time_ns.( >= ) now time_to_next_stable ->
+                     { stability = Stable stable; time_to_next_stable = None }
+                   | _ ->
+                     { stability = Unstable { unstable_value = stable; previously_stable }
+                     ; time_to_next_stable = Some candidate_time_to_next_stable
+                     })))
+           graph
     in
-    let%sub get_current_time = Bonsai.Clock.get_current_time () in
-    let%sub bounce =
+    let get_current_time = Bonsai.Clock.get_current_time graph in
+    let bounce =
       (* [bounce] is an effect which, when scheduled, will bounce the
            state-machine and set the time-until-stable to the current wallclock
            time plus the provided offset *)
@@ -611,27 +624,27 @@ module%test [@name "Bonsai_extra.value_stability"] _ = struct
       let%bind.Effect now = get_current_time in
       inject (Bounce (input, now))
     in
-    let%sub () =
+    let () =
       (* the input value changing triggers a bounce *)
       let%sub callback =
         let%arr bounce in
         fun _ -> bounce
       in
-      Bonsai.Edge.on_change ~sexp_of_model:[%sexp_of: M.t] ~equal input ~callback
+      Bonsai.Edge.on_change ~sexp_of_model:[%sexp_of: M.t] ~equal input ~callback graph
     in
-    let%sub () =
+    let () =
       let%sub on_deactivate =
         let%arr inject in
         inject Deactivate
       in
       (* activating the component bounces it to reset the timer *)
-      Bonsai.Edge.lifecycle ~on_deactivate ~on_activate:bounce ()
+      Bonsai.Edge.lifecycle ~on_deactivate ~on_activate:bounce graph
     in
     let%sub () =
       match%sub time_to_next_stable with
-      | None -> Bonsai.const ()
+      | None -> Bonsai.return ()
       | Some next_stable ->
-        let%sub callback =
+        let callback =
           let%arr inject and input and get_current_time and bounce in
           fun (prev : Bonsai.Clock.Before_or_after.t option)
             (cur : Bonsai.Clock.Before_or_after.t) ->
@@ -644,12 +657,14 @@ module%test [@name "Bonsai_extra.value_stability"] _ = struct
               bounce
             | _ -> Effect.Ignore
         in
-        let%sub before_or_after = Bonsai.Clock.at next_stable in
+        let before_or_after = Bonsai.Clock.at next_stable graph in
         Bonsai.Edge.on_change'
           ~sexp_of_model:[%sexp_of: Bonsai.Clock.Before_or_after.t]
           ~equal:[%equal: Bonsai.Clock.Before_or_after.t]
           before_or_after
           ~callback
+          graph;
+        Bonsai.return ()
     in
     let%arr stability and input in
     match stability with
@@ -668,9 +683,10 @@ module%test [@name "Bonsai_extra.value_stability"] _ = struct
       val value_stability
         :  ?sexp_of_model:('a -> Sexp.t)
         -> equal:('a -> 'a -> bool)
-        -> 'a Value.t
-        -> time_to_stable:Time_ns.Span.t Value.t
-        -> 'a Bonsai_extra.Stability.t Computation.t
+        -> 'a Bonsai.t
+        -> time_to_stable:Time_ns.Span.t Bonsai.t
+        -> local_ Bonsai.graph
+        -> 'a Bonsai_extra.Stability.t Bonsai.t
 
       val show_handle : ('a, 'b) Handle.t -> unit
     end) =
@@ -678,14 +694,15 @@ module%test [@name "Bonsai_extra.value_stability"] _ = struct
     let show = M.show_handle
 
     let%expect_test _ =
-      let v' = Bonsai.Var.create 1 in
-      let v = Bonsai.Var.value v' in
-      let c =
+      let v' = Bonsai.Expert.Var.create 1 in
+      let v = Bonsai.Expert.Var.value v' in
+      let c (local_ graph) =
         M.value_stability
           ~sexp_of_model:[%sexp_of: Int.t]
           ~equal:[%equal: Int.t]
           v
-          ~time_to_stable:(Value.return (Time_ns.Span.of_sec 1.0))
+          ~time_to_stable:(Bonsai.return (Time_ns.Span.of_sec 1.0))
+          graph
       in
       let handle =
         Handle.create
@@ -700,13 +717,13 @@ module%test [@name "Bonsai_extra.value_stability"] _ = struct
       advance_by_sec handle 1.0;
       show handle;
       [%expect {| (Stable 1) |}];
-      Bonsai.Var.set v' 2;
+      Bonsai.Expert.Var.set v' 2;
       show handle;
       [%expect {| (Unstable (previously_stable (1)) (unstable_value 2)) |}];
       advance_by_sec handle 0.5;
       show handle;
       [%expect {| (Unstable (previously_stable (1)) (unstable_value 2)) |}];
-      Bonsai.Var.set v' 3;
+      Bonsai.Expert.Var.set v' 3;
       show handle;
       [%expect {| (Unstable (previously_stable (1)) (unstable_value 3)) |}];
       advance_by_sec handle 0.5;
@@ -715,44 +732,45 @@ module%test [@name "Bonsai_extra.value_stability"] _ = struct
       advance_by_sec handle 0.5;
       show handle;
       [%expect {| (Stable 3) |}];
-      Bonsai.Var.set v' 4;
+      Bonsai.Expert.Var.set v' 4;
       show handle;
       [%expect {| (Unstable (previously_stable (3)) (unstable_value 4)) |}];
       advance_by_sec handle 1.0;
-      Bonsai.Var.set v' 5;
+      Bonsai.Expert.Var.set v' 5;
       show handle;
       [%expect {| (Unstable (previously_stable (3)) (unstable_value 5)) |}];
       advance_by_sec handle 1.0;
       show handle;
       [%expect {| (Stable 5) |}];
       advance_by_sec handle 0.5;
-      Bonsai.Var.set v' 4;
+      Bonsai.Expert.Var.set v' 4;
       show handle;
       [%expect {| (Unstable (previously_stable (5)) (unstable_value 4)) |}];
       advance_by_sec handle 0.5;
-      Bonsai.Var.set v' 5;
+      Bonsai.Expert.Var.set v' 5;
       show handle;
       [%expect {| (Unstable (previously_stable (5)) (unstable_value 5)) |}]
     ;;
 
     let%expect_test _ =
-      let v' = Bonsai.Var.create 1 in
-      let on' = Bonsai.Var.create true in
-      let v = Bonsai.Var.value v' in
-      let on = Bonsai.Var.value on' in
-      let c =
+      let v' = Bonsai.Expert.Var.create 1 in
+      let on' = Bonsai.Expert.Var.create true in
+      let v = Bonsai.Expert.Var.value v' in
+      let on = Bonsai.Expert.Var.value on' in
+      let c (local_ graph) =
         match%sub on with
         | true ->
-          let%sub x =
+          let x =
             M.value_stability
               ~sexp_of_model:[%sexp_of: Int.t]
               ~equal:[%equal: Int.t]
               v
-              ~time_to_stable:(Value.return (Time_ns.Span.of_sec 1.0))
+              ~time_to_stable:(Bonsai.return (Time_ns.Span.of_sec 1.0))
+              graph
           in
           let%arr x in
           Some x
-        | false -> Bonsai.const None
+        | false -> Bonsai.return None
       in
       let handle =
         Handle.create
@@ -767,10 +785,10 @@ module%test [@name "Bonsai_extra.value_stability"] _ = struct
       advance_by_sec handle 1.0;
       show handle;
       [%expect {| ((Stable 1)) |}];
-      Bonsai.Var.set on' false;
+      Bonsai.Expert.Var.set on' false;
       show handle;
       [%expect {| () |}];
-      Bonsai.Var.set on' true;
+      Bonsai.Expert.Var.set on' true;
       show handle;
       [%expect {| ((Unstable (previously_stable (1)) (unstable_value 1))) |}]
     ;;
@@ -796,7 +814,7 @@ module%test [@name "Bonsai_extra.value_stability"] _ = struct
 
   module _ = Common (struct
       let value_stability = Bonsai_extra.value_stability
-      let show_handle = Handle.show
+      let show_handle handle = Handle.show handle
     end)
 
   module _ = Common (struct

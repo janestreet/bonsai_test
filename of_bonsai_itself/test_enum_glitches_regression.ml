@@ -1,7 +1,7 @@
 open! Core
 open! Import
-module Bonsai_lib = Bonsai.Proc
-module Bonsai = Bonsai.Proc
+module Bonsai_lib = Bonsai_proc
+module Bonsai = Bonsai_proc
 open Bonsai_test
 
 module Choice = struct
@@ -36,7 +36,7 @@ let%expect_test _ =
   let open Bonsai.Let_syntax in
   let graph =
     let%sub state_machine =
-      Bonsai.state_machine1
+      Bonsai.state_machine_with_input
         ~sexp_of_model:[%sexp_of: Choice.t]
         ~equal:[%equal: Choice.t]
         ~sexp_of_action:[%sexp_of: Choice.t]

@@ -4,10 +4,6 @@ open Bonsai.Let_syntax
 open Bonsai_perf_shared
 
 module Dynamic_num = struct
-  type input = float Opaque_map.t
-  type output = float
-  type action = Nothing.t
-
   type t =
     | Let_arr
     | Map
@@ -73,6 +69,10 @@ module Dynamic_num = struct
       fold_inputs' mapped graph
   ;;
 
+  let all_computations =
+    lazy (all |> List.map ~f:(fun config -> name config, computation config))
+  ;;
+
   let fiddle_scenario ~num_fiddles ~size ~hit_ratio_denominator
     : (float Opaque_map.t, Nothing.t) Scenario.t
     =
@@ -98,34 +98,30 @@ module Dynamic_num = struct
           List.init num_fiddles ~f:(fun i ->
             Interaction.update_input input ~f:(fun prev ->
               fiddle_with_data ~round:(i + 1) prev))
-          |> Interaction.many_with_stabilizations)
+          |> Interaction.many_with_recomputes)
     }
   ;;
 
   let scenarios =
-    List.cartesian_product [ 10; 1000; 100_000 ] [ 5; 10; 50 ]
-    |> List.cartesian_product [ 5 ]
-    |> List.map
-         ~f:
-           (fun
-             (num_fiddles, (size, hit_ratio_denominator))
-             : (float Opaque_map.t, 'a) Scenario.t
-           -> fiddle_scenario ~size ~num_fiddles ~hit_ratio_denominator)
+    lazy
+      (List.cartesian_product [ 10; 1000; 100_000 ] [ 5; 10; 50 ]
+       |> List.cartesian_product [ 5 ]
+       |> List.map
+            ~f:
+              (fun
+                (num_fiddles, (size, hit_ratio_denominator))
+                : (float Opaque_map.t, 'a) Scenario.t
+              -> fiddle_scenario ~size ~num_fiddles ~hit_ratio_denominator))
   ;;
 
   let startup_inputs =
-    List.map [ 10; 1000; 100_000 ] ~f:(fun size ->
-      Int.to_string size, Opaque_map.of_list (List.init size ~f:Float.of_int))
+    lazy
+      (List.map [ 10; 1000; 100_000 ] ~f:(fun size ->
+         Int.to_string size, Opaque_map.of_list (List.init size ~f:Float.of_int)))
   ;;
-
-  let get_inject _ _ = Bonsai.Effect.Ignore
 end
 
 module Switch = struct
-  type input = bool
-  type output = string
-  type action = Nothing.t
-
   type t =
     | Arr_then_match of { uses_state : bool }
     | Match_sub of { uses_state : bool }
@@ -166,7 +162,10 @@ module Switch = struct
        | false -> f "false" graph)
   ;;
 
-  let get_inject _ _ = Bonsai.Effect.Ignore
+  let all_computations =
+    lazy (all |> List.map ~f:(fun config -> name config, computation config))
+  ;;
+
   let startup_inputs = [ "Start true", true; "Start false", false ]
 
   let scenarios =
@@ -178,7 +177,7 @@ module Switch = struct
           (fun input ->
             List.init num_switches ~f:(fun _ ->
               Interaction.update_input input ~f:(fun prev -> not prev))
-            |> Interaction.many_with_stabilizations)
+            |> Interaction.many_with_recomputes)
       })
   ;;
 end

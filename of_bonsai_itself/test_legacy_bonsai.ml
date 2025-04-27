@@ -11,7 +11,7 @@ let dummy_source_code_position =
     { pos_fname = "file_name.ml"; pos_lnum = 0; pos_bol = 0; pos_cnum = 0 }
 ;;
 
-let run_test ~(component : _ Bonsai.Arrow_deprecated.t) ~initial_input ~f =
+let run_test ~(component : _ Bonsai_arrow_deprecated.t) ~initial_input ~f =
   let time_source = Bonsai.Time_source.create ~start:(Time_ns.now ()) in
   let driver component =
     Bonsai_test.Arrow.Driver.create component ~initial_input ~time_source
@@ -57,14 +57,14 @@ module Counter_component = struct
 end
 
 let%expect_test "enum" =
-  let open Bonsai.Arrow_deprecated.Infix in
+  let open Bonsai_arrow_deprecated.Infix in
   let component =
-    Bonsai.Arrow_deprecated.enum
+    Bonsai_arrow_deprecated.enum
       (module Bool)
       ~which:Tuple2.get1
       ~handle:(function
-        | true -> Tuple2.get2 @>> Bonsai.Arrow_deprecated.pure ~f:(sprintf "true %d")
-        | false -> Tuple2.get2 @>> Bonsai.Arrow_deprecated.pure ~f:(sprintf "false %d"))
+        | true -> Tuple2.get2 @>> Bonsai_arrow_deprecated.pure ~f:(sprintf "true %d")
+        | false -> Tuple2.get2 @>> Bonsai_arrow_deprecated.pure ~f:(sprintf "false %d"))
   in
   run_test ~component ~initial_input:(true, 5) ~f:(fun driver ->
     [%expect {| |}];
@@ -80,7 +80,7 @@ let%expect_test "enum" =
 ;;
 
 let%expect_test "enum with action handling `Warn" =
-  let open Bonsai.Arrow_deprecated.Infix in
+  let open Bonsai_arrow_deprecated.Infix in
   let module Action = struct
     type t =
       | Outer of Counter_component.Action.t
@@ -88,27 +88,27 @@ let%expect_test "enum with action handling `Warn" =
   end
   in
   let component =
-    let%map.Bonsai.Arrow_deprecated (result, inject_inner), inject_outer =
-      Bonsai.Arrow_deprecated.of_module
+    let%map.Bonsai_arrow_deprecated (result, inject_inner), inject_outer =
+      Bonsai_arrow_deprecated.of_module
         (module Counter_component)
         ~sexp_of_model:[%sexp_of: Counter_component.Model.t]
         ~equal:[%equal: Int.t]
         ~default_model:1
-      >>> Bonsai.Arrow_deprecated.first
-            (Bonsai.Arrow_deprecated.enum
+      >>> Bonsai_arrow_deprecated.first
+            (Bonsai_arrow_deprecated.enum
                (module Bool)
                ~which:(fun digit -> Int.of_string digit mod 3 = 0)
                ~handle:(function
                  | false ->
                    Fn.ignore
-                   @>> Bonsai.Arrow_deprecated.of_module
+                   @>> Bonsai_arrow_deprecated.of_module
                          (module Counter_component)
                          ~sexp_of_model:[%sexp_of: Counter_component.Model.t]
                          ~equal:[%equal: Counter_component.Model.t]
                          ~default_model:0
                    >>| Tuple2.map_fst ~f:(sprintf "counter %s")
                  | true ->
-                   Bonsai.Arrow_deprecated.pure ~f:(fun s ->
+                   Bonsai_arrow_deprecated.pure ~f:(fun s ->
                      let view = sprintf "pure %s" s in
                      let inj _ = failwith "can't raise actions out of this one" in
                      view, inj)))
@@ -137,7 +137,7 @@ let%expect_test "enum with action handling `Warn" =
       ];
     [%expect
       {|
-      ("An action sent to an [of_module1] has been dropped because its input was not present. This happens when the [of_module1] is inactive when it receives a message."
+      ("An action sent to an [of_module_with_input] has been dropped because its input was not present. This happens when the [of_module_with_input] is inactive when it receives a message."
        (action Increment))
       pure 3
       |}];
@@ -147,7 +147,7 @@ let%expect_test "enum with action handling `Warn" =
 
 let%expect_test "constant component" =
   run_test
-    ~component:(Bonsai.Arrow_deprecated.const "some constant value")
+    ~component:(Bonsai_arrow_deprecated.const "some constant value")
     ~initial_input:()
     ~f:(fun driver ->
       [%expect {| |}];
@@ -159,7 +159,7 @@ let%expect_test "constant component" =
 let%expect_test "module component" =
   run_test
     ~component:
-      (Bonsai.Arrow_deprecated.of_module
+      (Bonsai_arrow_deprecated.of_module
          (module Counter_component)
          ~sexp_of_model:[%sexp_of: Counter_component.Model.t]
          ~default_model:0
@@ -181,8 +181,8 @@ let%expect_test "module component" =
 
 let%expect_test "state-machine counter-component" =
   let component =
-    let%map.Bonsai.Arrow_deprecated model, inject =
-      Bonsai.Arrow_deprecated.state_machine
+    let%map.Bonsai_arrow_deprecated model, inject =
+      Bonsai_arrow_deprecated.state_machine
         ~sexp_of_model:[%sexp_of: Counter_component.Model.t]
         ~sexp_of_action:[%sexp_of: Counter_component.Action.t]
         ~equal:[%equal: Counter_component.Model.t]
@@ -209,16 +209,16 @@ let%expect_test "state-machine counter-component" =
 ;;
 
 let%expect_test "basic Same_model let syntax" =
-  let open Bonsai.Arrow_deprecated.Let_syntax in
+  let open Bonsai_arrow_deprecated.Let_syntax in
   let counter_component =
-    Bonsai.Arrow_deprecated.of_module
+    Bonsai_arrow_deprecated.of_module
       (module Counter_component)
       ~sexp_of_model:[%sexp_of: Counter_component.Model.t]
       ~default_model:0
       ~equal:[%equal: Counter_component.Model.t]
   in
   let component =
-    let%map a_side = Bonsai.Arrow_deprecated.const 5
+    let%map a_side = Bonsai_arrow_deprecated.const 5
     and b_side, inject_b = counter_component in
     sprintf "%d | %s" a_side b_side, inject_b
   in
@@ -234,7 +234,7 @@ let%expect_test "basic Same_model let syntax" =
 ;;
 
 let%expect_test "module project field" =
-  let open Bonsai.Arrow_deprecated.Let_syntax in
+  let open Bonsai_arrow_deprecated.Let_syntax in
   let module _ = struct
     type _t =
       { a : int
@@ -243,7 +243,7 @@ let%expect_test "module project field" =
   end
   in
   let counter_component =
-    Bonsai.Arrow_deprecated.of_module
+    Bonsai_arrow_deprecated.of_module
       (module Counter_component)
       ~sexp_of_model:[%sexp_of: Counter_component.Model.t]
       ~default_model:0
@@ -270,7 +270,7 @@ let%expect_test "module project field" =
 
 let%expect_test "incremental fn constructor" =
   let component =
-    Bonsai.Arrow_deprecated.With_incr.pure
+    Bonsai_arrow_deprecated.With_incr.pure
       ~f:
         (Incr_map.mapi ~f:(fun ~key:_ ~data ->
            print_endline "doing math";
@@ -325,7 +325,7 @@ let%expect_test "schedule event from outside of the component" =
   end
   in
   let component =
-    Bonsai.Arrow_deprecated.of_module
+    Bonsai_arrow_deprecated.of_module
       (module Raises_something_from_without)
       ~sexp_of_model:[%sexp_of: Raises_something_from_without.Model.t]
       ~equal:[%equal: Raises_something_from_without.Model.t]
@@ -372,7 +372,7 @@ let%expect_test "schedule many events from outside of the component" =
   end
   in
   let component =
-    Bonsai.Arrow_deprecated.of_module
+    Bonsai_arrow_deprecated.of_module
       (module Raises_something_from_without)
       ~sexp_of_model:[%sexp_of: Raises_something_from_without.Model.t]
       ~equal:[%equal: Raises_something_from_without.Model.t]
@@ -391,13 +391,13 @@ let%expect_test "schedule many events from outside of the component" =
 ;;
 
 let%expect_test "value cutoff" =
-  let open Bonsai.Arrow_deprecated.Infix in
+  let open Bonsai_arrow_deprecated.Infix in
   let cutoff =
     Incr.Cutoff.create (fun ~old_value ~new_value -> old_value % 2 = new_value % 2)
   in
   let component =
-    Bonsai.Arrow_deprecated.With_incr.value_cutoff ~cutoff
-    >>> Bonsai.Arrow_deprecated.pure ~f:Int.to_string
+    Bonsai_arrow_deprecated.With_incr.value_cutoff ~cutoff
+    >>> Bonsai_arrow_deprecated.pure ~f:Int.to_string
   in
   run_test ~component ~initial_input:1 ~f:(fun driver ->
     [%expect {| |}];
@@ -443,7 +443,7 @@ let%expect_test "input" =
   end
   in
   let component =
-    Bonsai.Arrow_deprecated.of_module
+    Bonsai_arrow_deprecated.of_module
       (module Words_counter_component)
       ~sexp_of_model:[%sexp_of: Words_counter_component.Model.t]
       ~default_model:0
@@ -472,9 +472,9 @@ let%expect_test "input" =
 ;;
 
 let%expect_test "compose, pure" =
-  let open Bonsai.Arrow_deprecated.Infix in
-  let component_a = Bonsai.Arrow_deprecated.pure ~f:(fun model -> model mod 5) in
-  let component_b = Bonsai.Arrow_deprecated.pure ~f:(fun input -> input + 2) in
+  let open Bonsai_arrow_deprecated.Infix in
+  let component_a = Bonsai_arrow_deprecated.pure ~f:(fun model -> model mod 5) in
+  let component_b = Bonsai_arrow_deprecated.pure ~f:(fun input -> input + 2) in
   let component = component_a >>> component_b in
   run_test ~component ~initial_input:0 ~f:(fun driver ->
     [%expect {| |}];
@@ -486,10 +486,10 @@ let%expect_test "compose, pure" =
 ;;
 
 let%expect_test "pure_incr" =
-  let open Bonsai.Arrow_deprecated.Infix in
-  let component_a = Bonsai.Arrow_deprecated.pure ~f:(fun model -> model mod 5) in
+  let open Bonsai_arrow_deprecated.Infix in
+  let component_a = Bonsai_arrow_deprecated.pure ~f:(fun model -> model mod 5) in
   let component_b =
-    Bonsai.Arrow_deprecated.With_incr.pure ~f:(fun input ->
+    Bonsai_arrow_deprecated.With_incr.pure ~f:(fun input ->
       Incr.map input ~f:(fun i -> i + 2))
   in
   let component = component_a >>> component_b in
@@ -503,9 +503,9 @@ let%expect_test "pure_incr" =
 ;;
 
 let%expect_test "input projection" =
-  let open Bonsai.Arrow_deprecated.Infix in
+  let open Bonsai_arrow_deprecated.Infix in
   let component =
-    String.length @>> Bonsai.Arrow_deprecated.pure ~f:(fun input -> input + 1)
+    String.length @>> Bonsai_arrow_deprecated.pure ~f:(fun input -> input + 1)
   in
   run_test ~component ~initial_input:"hi" ~f:(fun driver ->
     [%expect {| |}];
@@ -518,8 +518,8 @@ let%expect_test "input projection" =
 
 let%expect_test "assoc on input" =
   let component =
-    Bonsai.Arrow_deprecated.pure ~f:(fun x -> x + 1)
-    |> Bonsai.Arrow_deprecated.Map.assoc_input (module String)
+    Bonsai_arrow_deprecated.pure ~f:(fun x -> x + 1)
+    |> Bonsai_arrow_deprecated.Map.assoc_input (module String)
   in
   run_test
     ~component
@@ -545,7 +545,7 @@ let%expect_test "assoc on input" =
 let%expect_test "Incremental.of_incr" =
   let var = Incr.Var.create "hello" in
   let incr = Incr.Var.watch var in
-  let component = Bonsai.Arrow_deprecated.With_incr.of_incr incr in
+  let component = Bonsai_arrow_deprecated.With_incr.of_incr incr in
   run_test
     ~component
     ~initial_input:(String.Map.of_alist_exn [ "a", 0; "b", 2 ])
@@ -563,22 +563,17 @@ let%expect_test "Incremental.of_incr" =
 ;;
 
 module _ = struct
-  open Bonsai.Arrow_deprecated.Let_syntax
+  open Bonsai_arrow_deprecated.Let_syntax
 
-  let dummy
-    (type t)
-    (module M : Bonsai.Arrow_deprecated.Model with type t = t)
-    ~default
-    ~equal
-    =
-    Bonsai.Arrow_deprecated.state_machine
-      ~sexp_of_model:[%sexp_of: M.t]
+  let dummy ~sexp_of ~default ~equal =
+    Bonsai_arrow_deprecated.state_machine
+      ~sexp_of_model:sexp_of
       ~equal
-      ~sexp_of_action:[%sexp_of: M.t]
+      ~sexp_of_action:sexp_of
       [%here]
       ~default_model:default
       ~apply_action:(fun (_ : _ Bonsai.Apply_action_context.t) () _model -> Fn.id)
-    >>| Tuple2.map_fst ~f:M.sexp_of_t
+    >>| Tuple2.map_fst ~f:sexp_of
   ;;
 
   let%expect_test "normal operation" =
@@ -586,7 +581,7 @@ module _ = struct
       Bonsai_test.Arrow.Driver.create
         ~initial_input:()
         ~time_source:(Bonsai.Time_source.create ~start:(Time_ns.now ()))
-        (dummy (module Int) ~equal:[%equal: Int.t] ~default:5)
+        (dummy ~sexp_of:[%sexp_of: int] ~equal:[%equal: Int.t] ~default:5)
     in
     let (module H) = Helpers.make_with_inject ~driver ~sexp_of_result:Fn.id in
     H.show ();

@@ -19,7 +19,13 @@ let create ?optimize ~time_source ~initial_input component =
     in
     input_var, computation
   in
-  let handle = Bonsai_driver.create ?optimize ~time_source computation in
+  let handle =
+    Bonsai_driver.create
+      ?optimize
+      ~instrumentation:(Bonsai_driver.Instrumentation.default_for_test_handles ())
+      ~time_source
+      computation
+  in
   { input_var; last_view = lazy ""; handle }
 ;;
 

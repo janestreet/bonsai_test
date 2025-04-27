@@ -1,9 +1,9 @@
 open! Core
 open! Import
 open Bonsai_test
-module Bonsai = Bonsai.Proc
+module Bonsai = Bonsai_proc
 open Bonsai.For_open
-module One_at_a_time = Bonsai_extra.One_at_a_time
+module One_at_a_time = Bonsai_extra_proc.One_at_a_time
 
 (* These test are a bit hairier then I'd like because [One_at_a_time.effect]
    only updates its state machine on [Handle.show] boundaries, which makes

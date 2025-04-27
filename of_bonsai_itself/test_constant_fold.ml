@@ -1,7 +1,7 @@
 open! Core
 open! Import
 module Bonsai_cont = Bonsai
-module Bonsai = Bonsai.Proc
+module Bonsai = Bonsai_proc
 open Bonsai.For_open
 open Bonsai.Let_syntax
 module Private = Bonsai.Private
@@ -378,7 +378,7 @@ let%expect_test "nested cutoffs get merged" =
 
 let%expect_test "state_machine1 with constant input is converted to state_machine0" =
   let c =
-    Bonsai.state_machine1
+    Bonsai.state_machine_with_input
       ~sexp_of_model:[%sexp_of: Int.t]
       ~equal:[%equal: Int.t]
       ~sexp_of_action:[%sexp_of: Int.t]

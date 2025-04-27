@@ -1,7 +1,7 @@
 open! Core
 open! Import
 open! Bonsai_test
-module Proc_bonsai = Bonsai.Proc
+module Proc_bonsai = Bonsai_proc
 module Effect = Bonsai.Effect
 open Bonsai.Let_syntax
 
@@ -1395,7 +1395,7 @@ module%test [@name "computation watcher"] _ = struct
               ~log_dependency_definition_position:true
               ~f:(fun graph ->
                 let b, set_b =
-                  Bonsai.state_machine0
+                  Bonsai.state_machine
                     ~here:(create_location `State 1)
                     ~sexp_of_model:String.sexp_of_t
                     ~sexp_of_action:Int.sexp_of_t
@@ -1486,7 +1486,7 @@ module%test [@name "computation watcher"] _ = struct
               ~log_dependency_definition_position:false
               ~f:(fun graph ->
                 let b, set_b =
-                  Bonsai.state_machine0
+                  Bonsai.state_machine
                     ~here:(create_location `State 1)
                     ~sexp_of_model:String.sexp_of_t
                     ~sexp_of_action:Int.sexp_of_t
@@ -1759,13 +1759,13 @@ module%test [@name "computation watcher"] _ = struct
       Bonsai.Expert.Var.value ~here:(create_location `Incr 0) input_var
     in
     let component graph =
-      let input_value = Bonsai.Proc.read input_var_value graph in
+      let input_value = Bonsai_proc.read input_var_value graph in
       Bonsai.Debug.watch_computation
         ~here:(create_location `Watcher 0)
         graph
         ~f:(fun graph ->
           let b, set_b =
-            Bonsai.state_machine1
+            Bonsai.state_machine_with_input
               ~here:(create_location `State 0)
               ~sexp_of_model:Int.sexp_of_t
               ~sexp_of_action:Int.sexp_of_t
@@ -1929,7 +1929,7 @@ module%test [@name "computation watcher"] _ = struct
         graph
         ~f:(fun graph ->
           let a, set_a =
-            Bonsai.state_machine0
+            Bonsai.state_machine
               ~here:(create_location `State 0)
               ~sexp_of_model:Int.sexp_of_t
               ~sexp_of_action:Int.sexp_of_t
@@ -1938,7 +1938,7 @@ module%test [@name "computation watcher"] _ = struct
               graph
           in
           let b, set_b =
-            Bonsai.state_machine0
+            Bonsai.state_machine
               ~here:(create_location `State 0)
               ~sexp_of_model:Int.sexp_of_t
               ~sexp_of_action:Int.sexp_of_t
@@ -1979,7 +1979,7 @@ module%test [@name "computation watcher"] _ = struct
       Bonsai.Expert.Var.value ~here:(create_location `Incr 0) input_var
     in
     let component graph =
-      let input_value = Bonsai.Proc.read input_var_value graph in
+      let input_value = Bonsai_proc.read input_var_value graph in
       Bonsai.Debug.watch_computation
         ~here:(create_location `Watcher 0)
         ~log_model_before:true
@@ -1988,7 +1988,7 @@ module%test [@name "computation watcher"] _ = struct
         graph
         ~f:(fun graph ->
           let b, set_b =
-            Bonsai.state_machine1
+            Bonsai.state_machine_with_input
               ~here:(create_location `State 0)
               ~sexp_of_model:Int.sexp_of_t
               ~sexp_of_action:Int.sexp_of_t
@@ -2086,10 +2086,19 @@ module%test [@name "computation watcher"] _ = struct
               ~here:(create_location `State 1)
               ~sexp_of_model:Int.sexp_of_t
               ~default_model:10
-              ~apply_action:
-                (fun
-                  _ ((_, _set_wrapped), (inner, _set_inner)) _model value ->
-                inner + value)
+              ~apply_action:(fun _ result model value ->
+                match result with
+                | Inactive ->
+                  let action = sexp_of_opaque value in
+                  eprint_s
+                    [%message
+                      "An action sent to a [wrap] has been dropped because its input was \
+                       not present. This happens when the [wrap] is inactive when it \
+                       receives a message."
+                        (action : Sexp.t)
+                        [%here]];
+                  model
+                | Active ((_, _set_wrapped), (inner, _set_inner)) -> inner + value)
               ~f:(fun model inject (local_ graph) ->
                 let state, set_state = computation_to_wrap graph in
                 let%arr model and state and set_state and inject in
@@ -3478,7 +3487,7 @@ let%expect_test "assoc_on" =
       ~get_model_key:(fun key _data -> key % 2)
       ~f:(fun _key _data graph ->
         let model, inject =
-          Bonsai.state_machine1
+          Bonsai.state_machine_with_input
             ~default_model:0
             ~apply_action:(fun _ctx input model new_model ->
               match input with
@@ -3772,7 +3781,19 @@ let%expect_test "wrap" =
     Bonsai.wrap
       graph
       ~default_model:0
-      ~apply_action:(fun _ctx (result, _) model () -> String.length result + model)
+      ~apply_action:(fun _ctx result model () ->
+        match result with
+        | Inactive ->
+          let action = sexp_of_opaque () in
+          eprint_s
+            [%message
+              "An action sent to a [wrap] has been dropped because its input was not \
+               present. This happens when the [wrap] is inactive when it receives a \
+               message."
+                (action : Sexp.t)
+                [%here]];
+          model
+        | Active (result, _) -> String.length result + model)
       ~f:(fun model inject _graph ->
         let%map model and inject in
         Int.to_string model, inject)
@@ -3807,7 +3828,19 @@ let%expect_test "wrap_n" =
       Bonsai.wrap_n
         graph
         ~default_model:0
-        ~apply_action:(fun _ctx (result, _) model () -> String.length result + model)
+        ~apply_action:(fun _ctx result model () ->
+          match result with
+          | Inactive ->
+            let action = sexp_of_opaque () in
+            eprint_s
+              [%message
+                "An action sent to a [wrap] has been dropped because its input was not \
+                 present. This happens when the [wrap] is inactive when it receives a \
+                 message."
+                  (action : Sexp.t)
+                  [%here]];
+            model
+          | Active (result, _) -> String.length result + model)
         ~n:Two
         ~f:(fun model inject _graph ->
           let model_as_string =
@@ -4194,7 +4227,7 @@ let%expect_test "dynamic action sent to non-existent assoc element" =
       graph
       ~f:(fun _key _data graph ->
         let model, inject =
-          Bonsai.state_machine1
+          Bonsai.state_machine_with_input
             ~default_model:0
             ~apply_action:(fun _ctx input model new_model ->
               match input with
@@ -4334,7 +4367,7 @@ module%test [@name "inactive delivery"] _ = struct
   let%expect_test "state_machine1 inactive-delivery" =
     (fun _ graph ->
       let model, inject =
-        Bonsai.state_machine1
+        Bonsai.state_machine_with_input
           ~default_model:0
           ~apply_action:(fun _ctx input _model new_model ->
             (match input with
@@ -4381,7 +4414,7 @@ module%test [@name "inactive delivery"] _ = struct
   let%expect_test "race inactive-delivery (but an active input)" =
     (fun input graph ->
       let model, inject =
-        Bonsai.state_machine1
+        Bonsai.state_machine_with_input
           ~default_model:0
           ~apply_action:(fun _ctx input _model new_model ->
             (match input with
@@ -4428,7 +4461,7 @@ module%test [@name "inactive delivery"] _ = struct
   let%expect_test "dynamic action inactive-delivery" =
     (fun _ graph ->
       let model, inject =
-        Bonsai.state_machine1
+        Bonsai.state_machine_with_input
           ~default_model:0
           ~apply_action:(fun _ctx input model new_model ->
             match input with
@@ -4475,7 +4508,7 @@ module%test [@name "inactive delivery"] _ = struct
   let%expect_test "actor1 inactive-delivery" =
     (fun _ graph ->
       let model, inject =
-        Bonsai.actor1
+        Bonsai.actor_with_input
           ~default_model:0
           ~recv:(fun _ctx input model new_model ->
             match input with
@@ -4545,7 +4578,7 @@ module%test [@name "inactive delivery"] _ = struct
   let%expect_test "actor0 inactive-delivery" =
     (fun _ graph ->
       let model, inject =
-        Bonsai.actor0
+        Bonsai.actor
           ~default_model:0
           ~recv:(fun _ctx _model new_model -> new_model, ())
           graph
@@ -4607,7 +4640,7 @@ module%test [@name "inactive delivery"] _ = struct
   let%expect_test "actor1 with constant input downgrades to actor0" =
     (fun _ graph ->
       let model, inject =
-        Bonsai.actor1
+        Bonsai.actor_with_input
           ~default_model:0
           ~recv:(fun _ctx input model new_model ->
             match input with
@@ -4718,11 +4751,11 @@ module%test [@name "inactive delivery"] _ = struct
     [%expect
       {|
       (Sub
-        (from (Return (value Incr)))
-        (via (Test 1))
+        (from (Return (value (Mapn (inputs Incr)))))
+        (via (Test 2))
         (into (
           Switch
-          (match_ (Mapn (inputs (Named (uid (Test 1))))))
+          (match_ (Named (uid (Test 2))))
           (arms ((Lazy t) (Return (value Exception)))))))
       ((1 0) (2 0))
       ((1 0) (2 3))
@@ -5080,7 +5113,7 @@ module%test [@name "inactive delivery"] _ = struct
 
     let%expect_test "reset by bouncing back to an action (state_machine0)" =
       let component graph =
-        Bonsai.state_machine0
+        Bonsai.state_machine
           ~default_model:0
           ~apply_action:(fun _ctx model is_increment ->
             if is_increment then model + 1 else 999)
@@ -5110,7 +5143,7 @@ module%test [@name "inactive delivery"] _ = struct
 
     let%expect_test "reset by bouncing back to an action (state_machine1)" =
       let component =
-        Bonsai.state_machine1
+        Bonsai.state_machine_with_input
           (opaque_const_value ())
           ~default_model:0
           ~apply_action:(fun _ctx input model is_increment ->
@@ -5278,7 +5311,7 @@ module%test [@name "inactive delivery"] _ = struct
 
     let%expect_test "reset by bouncing back to an action (race)" =
       let component graph =
-        Bonsai.state_machine1
+        Bonsai.state_machine_with_input
           (opaque_const_value ())
           ~default_model:0
           ~apply_action:
@@ -5350,7 +5383,7 @@ module%test [@name "inactive delivery"] _ = struct
             ~apply_action:(fun _ctx _ () () -> ())
             ~f:(fun _ _ graph ->
               let model, inject =
-                Bonsai.state_machine0
+                Bonsai.state_machine
                   graph
                   ~default_model:0
                   ~apply_action:(fun _ctx model is_increment ->
@@ -5447,7 +5480,7 @@ module%test [@name "inactive delivery"] _ = struct
         ~get_model_key:(fun _key _data -> ())
         ~f:(fun _key _data graph ->
           let model, inject =
-            Bonsai.state_machine1
+            Bonsai.state_machine_with_input
               ~default_model:0
               ~apply_action:(fun _ctx input model new_model ->
                 match input with
@@ -5847,42 +5880,37 @@ let%expect_test "on_display for updating a state (using on_change)" =
   let var = Bonsai.Expert.Var.create 1 in
   let handle =
     Handle.create
-      (Result_spec.sexp
-         (module struct
-           type t = unit
-
-           let sexp_of_t () = Sexp.Atom "rendering..."
-         end))
+      (Result_spec.sexp (module Unit))
       (component (Bonsai.Expert.Var.value var))
   in
   Handle.show handle;
   [%expect
     {|
-    rendering...
     (change! (prev ()) (cur 1))
+    ()
     |}];
   Handle.show handle;
-  [%expect {| rendering... |}];
+  [%expect {| () |}];
   Handle.show handle;
-  [%expect {| rendering... |}];
+  [%expect {| () |}];
   Bonsai.Expert.Var.set var 2;
   Handle.show handle;
   [%expect
     {|
-    rendering...
     (change! (prev (1)) (cur 2))
+    ()
     |}];
   Handle.show handle;
-  [%expect {| rendering... |}];
+  [%expect {| () |}];
   Handle.show handle;
-  [%expect {| rendering... |}]
+  [%expect {| () |}]
 ;;
 
 let%expect_test "actor" =
   let print_int_effect = printf "%d\n" |> Bonsai.Effect.of_sync_fun in
   let component graph =
     let _, effect =
-      Bonsai.actor0 ~default_model:0 ~recv:(fun _ctx v () -> v + 1, v) graph
+      Bonsai.actor ~default_model:0 ~recv:(fun _ctx v () -> v + 1, v) graph
     in
     let%map effect in
     let%bind.Bonsai.Effect i = effect () in
@@ -5915,7 +5943,7 @@ let%expect_test "actor" =
 let%expect_test "actor sending events to itself" =
   let component graph =
     let (_ : unit Bonsai.t), effect =
-      Bonsai.actor0 graph ~default_model:() ~recv:(fun ctx () i ->
+      Bonsai.actor graph ~default_model:() ~recv:(fun ctx () i ->
         (Bonsai.Apply_action_context.schedule_event ctx)
           (Effect.print_s [%message "got" ~_:(i : int)]);
         (match i with
@@ -6062,29 +6090,29 @@ let%expect_test "Handle.show_into_string lifecycle" =
     |}]
 ;;
 
-module%test [@name "Clock.every"] _ = struct
+module%test Clock_every = struct
   let%expect_test "Clocks that trigger immediately at the beginning" =
     let print_hi = (fun () -> print_endline "hi") |> Bonsai.Effect.of_sync_fun in
     let clocks =
       [ Bonsai.Clock.every
           ~when_to_start_next_effect:`Every_multiple_of_period_blocking
           ~trigger_on_activate:true
-          (Time_ns.Span.of_sec 3.0)
+          (opaque_const_value (Time_ns.Span.of_sec 3.0))
           (Bonsai.return (print_hi ()))
       ; Bonsai.Clock.every
           ~when_to_start_next_effect:`Wait_period_after_previous_effect_finishes_blocking
           ~trigger_on_activate:true
-          (Time_ns.Span.of_sec 3.0)
+          (opaque_const_value (Time_ns.Span.of_sec 3.0))
           (Bonsai.return (print_hi ()))
       ; Bonsai.Clock.every
           ~when_to_start_next_effect:`Wait_period_after_previous_effect_starts_blocking
           ~trigger_on_activate:true
-          (Time_ns.Span.of_sec 3.0)
+          (opaque_const_value (Time_ns.Span.of_sec 3.0))
           (Bonsai.return (print_hi ()))
       ; Bonsai.Clock.every
           ~when_to_start_next_effect:`Every_multiple_of_period_non_blocking
           ~trigger_on_activate:true
-          (Time_ns.Span.of_sec 3.0)
+          (opaque_const_value (Time_ns.Span.of_sec 3.0))
           (Bonsai.return (print_hi ()))
       ]
     in
@@ -6116,28 +6144,98 @@ module%test [@name "Clock.every"] _ = struct
       [%expect {| hi |}])
   ;;
 
+  let%expect_test "Clocks that trigger immediately at the beginning -- span changes \
+                   midway through"
+    =
+    let print_hi = (fun () -> print_endline "hi") |> Bonsai.Effect.of_sync_fun in
+    let interval_var = Bonsai.Expert.Var.create (Time_ns.Span.of_sec 3.0) in
+    let clocks =
+      [ Bonsai.Clock.every
+          ~when_to_start_next_effect:`Every_multiple_of_period_blocking
+          ~trigger_on_activate:true
+          (Bonsai.Expert.Var.value interval_var)
+          (Bonsai.return (print_hi ()))
+      ; Bonsai.Clock.every
+          ~when_to_start_next_effect:`Wait_period_after_previous_effect_finishes_blocking
+          ~trigger_on_activate:true
+          (Bonsai.Expert.Var.value interval_var)
+          (Bonsai.return (print_hi ()))
+      ; Bonsai.Clock.every
+          ~when_to_start_next_effect:`Wait_period_after_previous_effect_starts_blocking
+          ~trigger_on_activate:true
+          (Bonsai.Expert.Var.value interval_var)
+          (Bonsai.return (print_hi ()))
+      ; Bonsai.Clock.every
+          ~when_to_start_next_effect:`Every_multiple_of_period_non_blocking
+          ~trigger_on_activate:true
+          (Bonsai.Expert.Var.value interval_var)
+          (Bonsai.return (print_hi ()))
+      ]
+    in
+    List.iter clocks ~f:(fun clock ->
+      (* reset var *)
+      Bonsai.Expert.Var.set interval_var (Time_ns.Span.of_sec 3.0);
+      let handle =
+        Handle.create
+          (Result_spec.sexp (module Unit))
+          (fun graph ->
+            clock graph;
+            return ())
+      in
+      let move_forward_and_show () =
+        Handle.advance_clock_by handle (Time_ns.Span.of_sec 1.0);
+        Handle.recompute_view_until_stable handle
+      in
+      Handle.recompute_view_until_stable handle;
+      [%expect {| hi |}];
+      move_forward_and_show ();
+      [%expect {| |}];
+      move_forward_and_show ();
+      [%expect {| |}];
+      move_forward_and_show ();
+      [%expect {| hi |}];
+      move_forward_and_show ();
+      [%expect {| |}];
+      Bonsai.Expert.Var.set interval_var (Time_ns.Span.of_sec 2.0);
+      move_forward_and_show ();
+      (* this next "expect" block would be "hi" if the changed interval was realized
+         immediately, but it'll only get read after the next time that the effect is 
+         performed. *)
+      [%expect {| |}];
+      move_forward_and_show ();
+      [%expect {| hi |}];
+      move_forward_and_show ();
+      [%expect {| |}];
+      move_forward_and_show ();
+      [%expect {| hi |}];
+      move_forward_and_show ();
+      [%expect {| |}];
+      move_forward_and_show ();
+      [%expect {| hi |}])
+  ;;
+
   let%expect_test "Clocks that wait span length before triggering at the beginning" =
     let print_hi = (fun () -> print_endline "hi") |> Bonsai.Effect.of_sync_fun in
     let clocks =
       [ Bonsai.Clock.every
           ~when_to_start_next_effect:`Every_multiple_of_period_blocking
           ~trigger_on_activate:false
-          (Time_ns.Span.of_sec 3.0)
+          (Bonsai.return (Time_ns.Span.of_sec 3.0))
           (Bonsai.return (print_hi ()))
       ; Bonsai.Clock.every
           ~when_to_start_next_effect:`Wait_period_after_previous_effect_finishes_blocking
           ~trigger_on_activate:false
-          (Time_ns.Span.of_sec 3.0)
+          (Bonsai.return (Time_ns.Span.of_sec 3.0))
           (Bonsai.return (print_hi ()))
       ; Bonsai.Clock.every
           ~when_to_start_next_effect:`Wait_period_after_previous_effect_starts_blocking
           ~trigger_on_activate:false
-          (Time_ns.Span.of_sec 3.0)
+          (Bonsai.return (Time_ns.Span.of_sec 3.0))
           (Bonsai.return (print_hi ()))
       ; Bonsai.Clock.every
           ~when_to_start_next_effect:`Every_multiple_of_period_non_blocking
           ~trigger_on_activate:false
-          (Time_ns.Span.of_sec 3.0)
+          (Bonsai.return (Time_ns.Span.of_sec 3.0))
           (Bonsai.return (print_hi ()))
       ]
     in
@@ -6175,22 +6273,22 @@ module%test [@name "Clock.every"] _ = struct
       [ Bonsai.Clock.every
           ~when_to_start_next_effect:`Every_multiple_of_period_blocking
           ~trigger_on_activate:false
-          (Time_ns.Span.of_sec 0.0)
+          (Bonsai.return (Time_ns.Span.of_sec 0.0))
           (Bonsai.return (print_hi ()))
       ; Bonsai.Clock.every
           ~when_to_start_next_effect:`Wait_period_after_previous_effect_finishes_blocking
           ~trigger_on_activate:false
-          (Time_ns.Span.of_sec 0.0)
+          (Bonsai.return (Time_ns.Span.of_sec 0.0))
           (Bonsai.return (print_hi ()))
       ; Bonsai.Clock.every
           ~when_to_start_next_effect:`Wait_period_after_previous_effect_starts_blocking
           ~trigger_on_activate:false
-          (Time_ns.Span.of_sec 0.0)
+          (Bonsai.return (Time_ns.Span.of_sec 0.0))
           (Bonsai.return (print_hi ()))
       ; Bonsai.Clock.every
           ~when_to_start_next_effect:`Every_multiple_of_period_non_blocking
           ~trigger_on_activate:false
-          (Time_ns.Span.of_sec 0.0)
+          (Bonsai.return (Time_ns.Span.of_sec 0.0))
           (Bonsai.return (print_hi ()))
       ]
     in
@@ -6241,7 +6339,7 @@ module%test [@name "Clock.every"] _ = struct
       Bonsai.Clock.every
         ~when_to_start_next_effect
         ~trigger_on_activate
-        (Time_ns.Span.of_sec span)
+        (Bonsai.return (Time_ns.Span.of_sec span))
         action
     in
     Handle.create
@@ -6931,7 +7029,7 @@ module%test [@name "Clock.every"] _ = struct
               Bonsai.Clock.every
                 ~when_to_start_next_effect
                 ~trigger_on_activate:false
-                (Time_ns.Span.of_sec 3.0)
+                (Bonsai.return (Time_ns.Span.of_sec 3.0))
                 (let%map set_state in
                  let%bind.Effect () =
                    (Effect.of_sync_fun (fun () ->
@@ -7019,7 +7117,7 @@ module%test [@name "Clock.every"] _ = struct
               Bonsai.Clock.every
                 ~when_to_start_next_effect
                 ~trigger_on_activate:true
-                (Time_ns.Span.of_sec 3.0)
+                (Bonsai.return (Time_ns.Span.of_sec 3.0))
                 (Bonsai.return (Effect.print_s [%message "tick tock"]))
                 graph;
               return ()
@@ -7080,7 +7178,7 @@ module%test [@name "Clock.every"] _ = struct
               Bonsai.Clock.every
                 ~when_to_start_next_effect
                 ~trigger_on_activate:false
-                (Time_ns.Span.of_sec 3.0)
+                (Bonsai.return (Time_ns.Span.of_sec 3.0))
                 (Bonsai.return (Effect.print_s [%message "tick tock"]))
                 graph;
               return ()
@@ -7139,7 +7237,7 @@ module%test [@name "Clock.every"] _ = struct
               Bonsai.Clock.every
                 ~when_to_start_next_effect
                 ~trigger_on_activate:false
-                (Time_ns.Span.of_sec 3.0)
+                (Bonsai.return (Time_ns.Span.of_sec 3.0))
                 (Bonsai.return (Effect.print_s [%message "tick tock"]))
                 graph;
               return ()
@@ -7585,7 +7683,7 @@ module%test [@name "Clock.every"] _ = struct
     let component graph =
       let (_ : unit Bonsai.t), inject =
         let sleep = Bonsai.Clock.sleep graph in
-        Bonsai.state_machine1
+        Bonsai.state_machine_with_input
           ~default_model:()
           ~apply_action:(fun ctx sleep () () ->
             match sleep with
@@ -7603,7 +7701,7 @@ module%test [@name "Clock.every"] _ = struct
         Bonsai.Clock.every
           ~when_to_start_next_effect:`Every_multiple_of_period_non_blocking
           ~trigger_on_activate:true
-          (Time_ns.Span.of_sec 3.0)
+          (Bonsai.return (Time_ns.Span.of_sec 3.0))
           (let%map inject in
            inject ())
           graph;
@@ -7736,8 +7834,8 @@ let%expect_test "wait_after_display twice in a row" =
   Handle.show handle;
   [%expect
     {|
-    view
     "after display"
+    view
     |}];
   Handle.show handle;
   [%expect {| view |}]
@@ -8391,14 +8489,15 @@ let%expect_test "exactly once" =
   let component graph =
     Bonsai_extra.exactly_once
       (Bonsai.return (Ui_effect.print_s [%message "hello!"]))
-      graph
+      graph;
+    Bonsai.return ()
   in
   let handle = Handle.create (Result_spec.sexp (module Unit)) component in
   Handle.show handle;
   [%expect
     {|
-    ()
     hello!
+    ()
     |}];
   Handle.show handle;
   [%expect {| () |}]
@@ -8424,8 +8523,8 @@ let%expect_test "exactly once with value" =
   Handle.show handle;
   [%expect
     {|
-    ()
     hello!
+    ()
     |}];
   Handle.show handle;
   [%expect {| (done) |}]
@@ -8444,7 +8543,8 @@ let%expect_test "~yoink~ peek" =
          | Inactive -> Effect.never
        in
        Ui_effect.print_s [%message (s : int)])
-      graph
+      graph;
+    Bonsai.return ()
   in
   let handle = Handle.create (Result_spec.sexp (module Unit)) component in
   Handle.show handle;
@@ -8460,7 +8560,7 @@ let%expect_test "~yoink~ peek" =
 let%expect_test "bonk" =
   let component graph =
     let (_ : unit Bonsai.t), inject_message =
-      Bonsai.state_machine0
+      Bonsai.state_machine
         ~default_model:()
         ~apply_action:(fun _context () message -> print_endline message)
         graph
@@ -8527,7 +8627,7 @@ let%expect_test "bonk sorts a list" =
     let items_and_inject_item, reset =
       Bonsai.with_model_resetter graph ~f:(fun graph ->
         let model, inject =
-          Bonsai.state_machine0
+          Bonsai.state_machine
             ~default_model:[]
             ~apply_action:(fun _context l i -> l @ [ i ])
             graph
@@ -8621,10 +8721,10 @@ let%expect_test "effect-lazy" =
   Handle.show handle;
   [%expect
     {|
-    ()
     (a world)
     computing b...
     (b world)
+    ()
     |}]
 ;;
 
@@ -8796,7 +8896,6 @@ let%expect_test "with_self_effect" =
   in
   let component graph =
     Bonsai_extra.with_self_effect
-      ()
       ~f:(fun input graph ->
         let number, set_number = Bonsai.state 0 graph in
         let%map number and set_number and input in
@@ -8839,15 +8938,17 @@ let%expect_test "with_self_effect" =
 
 let%expect_test "state_machine_dynamic_model" =
   let component graph =
-    Bonsai_extra.state_machine0_dynamic_model
-      ()
-      ~model:
-        (`Computed
-          (return (function
-            | None -> "not set "
-            | Some s -> sprintf "set %s" s)))
-      ~apply_action:(fun _ctx _model action -> action)
-      graph
+    let state, inject =
+      Bonsai_extra.state_machine0_dynamic_model
+        ~model:
+          (`Computed
+            (return (function
+              | None -> "not set "
+              | Some s -> sprintf "set %s" s)))
+        ~apply_action:(fun _ctx _model action -> action)
+        graph
+    in
+    Bonsai.both state inject
   in
   let handle =
     Handle.create
@@ -8877,7 +8978,7 @@ let%expect_test "portal" =
           (Bonsai.Expert.Var.value var)
           ~callback:inject
           graph;
-        return ((), Ui_effect.print_s))
+        return (), return Ui_effect.print_s)
       graph
   in
   let handle = Handle.create (Result_spec.sexp (module Unit)) component in
@@ -8894,7 +8995,7 @@ let%expect_test "portal 2" =
   let component =
     Bonsai_extra.with_inject_fixed_point (fun inject_fix graph ->
       let state1, inject1 =
-        Bonsai.state_machine1
+        Bonsai.state_machine_with_input
           ~default_model:0
           ~apply_action:(fun ctx inject model action ->
             match inject with
@@ -8908,7 +9009,7 @@ let%expect_test "portal 2" =
           graph
       in
       let (_ : unit Bonsai.t), inject2 =
-        Bonsai.state_machine1
+        Bonsai.state_machine_with_input
           ~default_model:()
           ~apply_action:(fun ctx state1 _model action ->
             Bonsai.Apply_action_context.schedule_event
@@ -8919,7 +9020,7 @@ let%expect_test "portal 2" =
           state1
           graph
       in
-      Bonsai.both inject1 inject2)
+      inject1, inject2)
   in
   let handle =
     Handle.create
@@ -8947,8 +9048,8 @@ let%expect_test "portal 2" =
 
 let%expect_test "pipe" =
   let component graph =
-    let push_and_pop = Bonsai_extra.pipe (module String) graph in
-    let%map push, pop = push_and_pop in
+    let push, pop = Bonsai_extra.pipe graph in
+    let%map push and pop in
     let pop s =
       let%bind.Bonsai.Effect a = pop in
       Ui_effect.print_s [%sexp "pop", (s : string), (a : string)]
@@ -9052,8 +9153,8 @@ let%expect_test "evaluation of pure values under a match%sub" =
   Handle.show handle;
   [%expect
     {|
-    -1
     activating!
+    -1
     |}];
   Bonsai.Expert.Var.set determines_use true;
   Handle.show handle;
@@ -9109,8 +9210,8 @@ let%expect_test "evaluation of pure values under an assoc" =
   Handle.show handle;
   [%expect
     {|
-    ()
     activating!
+    ()
     |}];
   Bonsai.Expert.Var.set determines_use true;
   Handle.show handle;
@@ -9199,7 +9300,7 @@ let%expect_test "evaluation of pure values as an input to an assoc (with a \
           graph
           ~f:(fun _key _data graph ->
             let (_ : _) =
-              Bonsai.state_machine1
+              Bonsai.state_machine_with_input
                 ~default_model:()
                 ~apply_action:(fun _ _ _ _ -> ())
                 (opaque_const_value ())
@@ -9406,7 +9507,7 @@ let%expect_test "action dropped in match%sub" =
     match%sub x with
     | true ->
       let (_ : unit Bonsai.t), inject =
-        Bonsai.state_machine1
+        Bonsai.state_machine_with_input
           ~default_model:()
           ~apply_action:(fun _ctx input () () ->
             match input with
@@ -9593,7 +9694,10 @@ let%expect_test "value_with_override" =
   let default_var = Bonsai.Expert.Var.create "First Model Value" in
   let value = Bonsai.Expert.Var.value default_var in
   let component graph =
-    Bonsai_extra.value_with_override ~equal:[%equal: String.t] value graph
+    let value, override =
+      Bonsai_extra.value_with_override ~equal:[%equal: String.t] value graph
+    in
+    Bonsai.both value override
   in
   let handle =
     Handle.create
@@ -9628,11 +9732,11 @@ let%expect_test "value_with_override in resetter" =
   let handle =
     let value = Bonsai.Expert.Var.value default_var in
     let component graph =
-      let result, reset_effect =
-        Bonsai.with_model_resetter graph ~f:(fun graph ->
+      let (state, override), reset_effect =
+        Bonsai.with_model_resetter_n ~n:Two graph ~f:(fun graph ->
           Bonsai_extra.value_with_override value graph)
       in
-      Bonsai.both result reset_effect
+      Bonsai.both (Bonsai.both state override) reset_effect
     in
     Handle.create
       (module struct
@@ -9690,7 +9794,7 @@ let%expect_test "ordering behavior of skeleton traversal" =
       |> List.reduce_exn ~f:(Bonsai.map2 ~f:(fun () () -> ()))
     in
     let c1, _inject_c1 =
-      Bonsai.state_machine1
+      Bonsai.state_machine_with_input
         ~default_model:()
         all_values
         graph
@@ -9829,7 +9933,7 @@ let%expect_test "on_activate lifecycle events are run the second frame after the
   let active_var = Bonsai.Expert.Var.create true in
   let component graph =
     let (_ : unit Bonsai.t), inject =
-      Bonsai.state_machine1
+      Bonsai.state_machine_with_input
         ~default_model:()
         ~apply_action:(fun _ctx (_ : unit Bonsai.Computation_status.t) () () ->
           print_endline "on_activate")
@@ -9874,7 +9978,7 @@ let%expect_test "State machine actions that are scheduled while running the acti
   =
   let component graph =
     let model, inject =
-      Bonsai.state_machine0
+      Bonsai.state_machine
         ~default_model:()
         ~apply_action:(fun ctx () n ->
           let schedule_event = Bonsai.Apply_action_context.schedule_event ctx in
@@ -10011,10 +10115,10 @@ module%test [@name "Action delivery paths"] _ = struct
   let%expect_test "Sub/Leaf1/Leaf0" =
     let component graph =
       let dummy_sm0 =
-        Bonsai.state_machine0 ~apply_action:(fun _context () () -> ()) ~default_model:()
+        Bonsai.state_machine ~apply_action:(fun _context () () -> ()) ~default_model:()
       in
       let dummy_sm1 =
-        Bonsai.state_machine1
+        Bonsai.state_machine_with_input
           (opaque_const_value ())
           ~apply_action:(fun _context _input () () -> ())
           ~default_model:()
@@ -10194,7 +10298,7 @@ module%test [@name "Action delivery paths"] _ = struct
           let model_and_inject, inject_reset =
             Bonsai.with_model_resetter graph ~f:(fun graph ->
               let model, inject =
-                Bonsai.state_machine1
+                Bonsai.state_machine_with_input
                   ~default_model:()
                   ~apply_action:(fun _context _input () () -> ())
                   (opaque_const_value ())
@@ -10257,7 +10361,7 @@ module%test [@name "Action delivery paths"] _ = struct
       match%sub lazy_branch with
       | false ->
         let _, inject =
-          Bonsai.state_machine0
+          Bonsai.state_machine
             ~default_model:()
             ~apply_action:(fun _context () () -> ())
             graph
@@ -10267,7 +10371,7 @@ module%test [@name "Action delivery paths"] _ = struct
       | true ->
         (Bonsai.Expert.delay [@alert "-deprecated"]) graph ~f:(fun graph ->
           let _, inject =
-            Bonsai.state_machine0
+            Bonsai.state_machine
               ~default_model:()
               ~apply_action:(fun _context () () -> ())
               graph
@@ -10317,7 +10421,7 @@ module%test [@name "Action delivery paths"] _ = struct
         graph
         ~f:(fun _ _ graph ->
           let _, inject =
-            Bonsai.state_machine0
+            Bonsai.state_machine
               ~default_model:()
               ~apply_action:(fun _context () () -> ())
               graph
@@ -10451,9 +10555,9 @@ module%test [@name "path regression test"] _ = struct
       {|
       bonsai_path_x_x_x
       bonsai_path_x_x_y
-      bonsai_path_x_y
-      bonsai_path_y_x
-      bonsai_path_y_y
+      bonsai_path_x_y_x
+      bonsai_path_x_y_y
+      bonsai_path_y
       |}]
   ;;
 
@@ -10543,8 +10647,7 @@ module%test [@name "computational shape"] _ = struct
     Handle.show handle;
     [%expect
       {|
-      bonsai_path_y_y_y_y
-      bonsai_path_y_y_y_x
+      bonsai_path_y_y_y
       bonsai_path_y_y_x_y
       bonsai_path_y_y_x_x
       bonsai_path_y_x_y_y
@@ -10557,7 +10660,8 @@ module%test [@name "computational shape"] _ = struct
       bonsai_path_x_y_x_x
       bonsai_path_x_x_y_y
       bonsai_path_x_x_y_x
-      bonsai_path_x_x_x_y
+      bonsai_path_x_x_x_y_y
+      bonsai_path_x_x_x_y_x
       bonsai_path_x_x_x_x_y
       bonsai_path_x_x_x_x_x
       |}]
@@ -10635,7 +10739,7 @@ module%test [@name "apply action time source"] _ = struct
   let%expect_test "print current time from apply_action" =
     let state_machine0_component graph =
       let _model, inject =
-        Bonsai.state_machine0
+        Bonsai.state_machine
           ~default_model:()
           ~apply_action:(fun ctx () () -> print_ctx ctx)
           graph
@@ -10644,7 +10748,7 @@ module%test [@name "apply action time source"] _ = struct
     in
     let state_machine1_component graph =
       let _model, inject =
-        Bonsai.state_machine1
+        Bonsai.state_machine_with_input
           ~default_model:()
           ~apply_action:(fun ctx (Active () | Inactive) () () -> print_ctx ctx)
           (opaque_const_value ())
@@ -10654,13 +10758,13 @@ module%test [@name "apply action time source"] _ = struct
     in
     let actor0_component graph =
       let _model, inject =
-        Bonsai.actor0 ~default_model:() ~recv:(fun ctx () () -> print_ctx ctx, ()) graph
+        Bonsai.actor ~default_model:() ~recv:(fun ctx () () -> print_ctx ctx, ()) graph
       in
       inject
     in
     let actor1_component graph =
       let _model, inject =
-        Bonsai.actor1
+        Bonsai.actor_with_input
           ~default_model:()
           ~recv:(fun ctx (Active () | Inactive) () () -> print_ctx ctx, ())
           (opaque_const_value ())
@@ -10712,7 +10816,7 @@ module%test [@name "apply action time source"] _ = struct
   let%expect_test "delay and bounce" =
     let state_machine0_component graph =
       let _model, inject =
-        Bonsai.state_machine0
+        Bonsai.state_machine
           ~default_model:()
           ~apply_action:(fun ctx () action -> print_and_schedule ctx action)
           graph
@@ -10721,7 +10825,7 @@ module%test [@name "apply action time source"] _ = struct
     in
     let state_machine1_component graph =
       let _model, inject =
-        Bonsai.state_machine1
+        Bonsai.state_machine_with_input
           ~default_model:()
           ~apply_action:(fun ctx (Active () | Inactive) () action ->
             print_and_schedule ctx action)
@@ -10732,7 +10836,7 @@ module%test [@name "apply action time source"] _ = struct
     in
     let actor0_component graph =
       let _model, inject =
-        Bonsai.actor0
+        Bonsai.actor
           ~default_model:()
           ~recv:(fun ctx () action -> print_and_schedule ctx action, ())
           graph
@@ -10741,7 +10845,7 @@ module%test [@name "apply action time source"] _ = struct
     in
     let actor1_component graph =
       let _model, inject =
-        Bonsai.actor1
+        Bonsai.actor_with_input
           ~default_model:()
           ~recv:(fun ctx (Active () | Inactive) () action ->
             print_and_schedule ctx action, ())

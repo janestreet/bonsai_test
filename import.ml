@@ -1,5 +1,4 @@
 open! Core
-module Bonsai = Bonsai.Proc
 open Bonsai.Let_syntax
 
 module Effect = struct
@@ -24,6 +23,9 @@ let dummy_source_code_position =
     { pos_fname = "file_name.ml"; pos_lnum = 0; pos_bol = 0; pos_cnum = 0 }
 ;;
 
-let opaque_const x = Bonsai.read (Bonsai.Var.value (Bonsai.Var.create x))
-let opaque_const_value x = Bonsai.Var.value (Bonsai.Var.create x)
-let opaque_computation c = if%sub opaque_const_value true then c else assert false
+let opaque_const x _ = Bonsai.Expert.Var.value (Bonsai.Expert.Var.create x)
+let opaque_const_value x = Bonsai.Expert.Var.value (Bonsai.Expert.Var.create x)
+
+let opaque_computation c (local_ graph) =
+  if%sub opaque_const_value true then c graph else assert false
+;;

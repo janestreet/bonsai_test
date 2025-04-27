@@ -1,6 +1,6 @@
 open! Core
 open! Import
-module Bonsai = Bonsai.Proc
+module Bonsai = Bonsai_proc
 open Bonsai_test
 open Bonsai.For_open
 open Bonsai.Let_syntax
@@ -81,7 +81,14 @@ let%test_unit "larger groupings of paths behave" =
       assert_path_unique_id_is_alpha path)
 ;;
 
-type simple_path = [ `Subst_into | `Subst_from | `Assoc of Int.t | `Switch of Int.t ] list
+type simple_path =
+  [ `Subst_into_invert_lifecycles
+  | `Subst_into
+  | `Subst_from
+  | `Assoc of Int.t
+  | `Switch of Int.t
+  ]
+    list
 [@@deriving sexp, quickcheck]
 
 let iterations = ref 0
@@ -101,7 +108,9 @@ let%quick_test ("Bisimulating run length encoding path id comparison and slow bu
       List.fold elements ~init:Bonsai.Private.Path.empty ~f:(fun path element ->
         let element =
           match element with
-          | `Subst_from -> Bonsai.Private.Path.Elem.Subst_from
+          | `Subst_into_invert_lifecycles ->
+            Bonsai.Private.Path.Elem.Subst_into_invert_lifecycles
+          | `Subst_from -> Subst_from
           | `Subst_into -> Subst_into
           | `Assoc i -> Assoc (T { key = i; id = int_id; compare = [%compare: int] })
           | `Switch i -> Switch i
@@ -140,9 +149,9 @@ let%expect_test ("distribution of quick_test samples" [@tags "no-js"]) =
   [%expect
     {|
     ((total                   10000)
-     (the_same                62)
-     (not_the_same            6095)
-     (includes_the_empty_list 3843))
+     (the_same                57)
+     (not_the_same            5990)
+     (includes_the_empty_list 3953))
     |}]
 ;;
 
@@ -158,7 +167,9 @@ let%quick_test ("Bisimulating run length encoding path id comparison and slow bu
       List.fold path ~init:Bonsai.Private.Path.empty ~f:(fun path element ->
         let element =
           match element with
-          | `Subst_from -> Bonsai.Private.Path.Elem.Subst_from
+          | `Subst_into_invert_lifecycles ->
+            Bonsai.Private.Path.Elem.Subst_into_invert_lifecycles
+          | `Subst_from -> Subst_from
           | `Subst_into -> Subst_into
           | `Assoc i -> Assoc (T { key = i; id = int_id; compare = [%compare: int] })
           | `Switch i -> Switch i
@@ -173,3 +184,33 @@ let%quick_test ("Bisimulating run length encoding path id comparison and slow bu
   let fast_result = Bonsai.Private.Path.compare path_a path_b in
   assert (correct_result = fast_result)
 ;;
+
+module%test [@name "paths compare as expected"] _ = struct
+  let%expect_test "regular lifecycles" =
+    let open Bonsai.Private.Path in
+    let from = append empty Subst_from in
+    let into = append empty Subst_into in
+    print_s [%message (compare from into : int)];
+    [%expect {| ("compare from into" -1) |}];
+    ()
+  ;;
+
+  let%expect_test "inverted lifecycles" =
+    let open Bonsai.Private.Path in
+    let from = append empty Subst_from in
+    let into_inverted = append empty Subst_into_invert_lifecycles in
+    print_s [%message (compare from into_inverted : int)];
+    [%expect {| ("compare from into_inverted" 1) |}];
+    ()
+  ;;
+
+  let%expect_test "regression: x_x_x vs x_w" =
+    let open Bonsai.Private.Path in
+    let a = append (append (append empty Subst_from) Subst_from) Subst_from in
+    let b = append (append empty Subst_from) Subst_into_invert_lifecycles in
+    print_s [%message (compare a b : int)];
+    (* We expect [a] > [b], so [1].*)
+    [%expect {| ("compare a b" 1) |}];
+    ()
+  ;;
+end

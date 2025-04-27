@@ -35,7 +35,7 @@ let run_effect_on_change_and_remind_every_span_if_true
             Bonsai.Clock.every
               ~trigger_on_activate:false
               ~when_to_start_next_effect:`Every_multiple_of_period_blocking
-              span
+              (return span)
               effect
               graph
           in

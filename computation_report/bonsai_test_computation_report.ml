@@ -5,27 +5,26 @@ module Perf_configs = Bonsai_test_shared_for_testing_bonsai.Perf_configs
 module%test [@name "list"] _ = struct
   let%expect_test "Startup" =
     Report.Startup.run_and_print_compare
-      (module Perf_configs.Dynamic_num)
-      Perf_configs.Dynamic_num.startup_inputs
-      Perf_configs.Dynamic_num.all;
+      ~computations:(force Perf_configs.Dynamic_num.all_computations)
+      (force Perf_configs.Dynamic_num.startup_inputs);
     [%expect
       {|
       ======= Startup Incr Node Stats =======
       ┌────────────────────────┬────────────┬────────────┬─────────────┬───────────────┬──────────────────┬───────────────────┐
       │                        │ max_height │ node_count │ max_node_id │ nodes_created │ nodes_recomputed │ nodes_invalidated │
       ├────────────────────────┼────────────┼────────────┼─────────────┼───────────────┼──────────────────┼───────────────────┤
-      │ let%arr: 10            │ 1          │      4     │       6     │       5       │      4           │ 0                 │
-      │ bonsai.Map.map: 10     │ 2          │      5     │       7     │       6       │      5           │ 0                 │
-      │ assoc_simple: 10       │ 2          │      5     │       7     │       6       │      5           │ 0                 │
-      │ assoc: 10              │ 9          │     68     │     109     │     110       │     68           │ 0                 │
-      │ let%arr: 1000          │ 1          │      4     │       6     │       5       │      4           │ 0                 │
-      │ bonsai.Map.map: 1000   │ 2          │      5     │       7     │       6       │      5           │ 0                 │
-      │ assoc_simple: 1000     │ 2          │      5     │       7     │       6       │      5           │ 0                 │
-      │ assoc: 1000            │ 9          │   6008     │   10009     │   10010       │   6008           │ 0                 │
-      │ let%arr: 100000        │ 1          │      4     │       6     │       5       │      4           │ 0                 │
-      │ bonsai.Map.map: 100000 │ 2          │      5     │       7     │       6       │      5           │ 0                 │
-      │ assoc_simple: 100000   │ 2          │      5     │       7     │       6       │      5           │ 0                 │
-      │ assoc: 100000          │ 9          │ 600008     │ 1000009     │ 1000010       │ 600008           │ 0                 │
+      │ let%arr: 10            │  5         │     11     │      15     │      14       │     11           │ 0                 │
+      │ bonsai.Map.map: 10     │  6         │     12     │      16     │      15       │     12           │ 0                 │
+      │ assoc_simple: 10       │  6         │     12     │      16     │      15       │     12           │ 0                 │
+      │ assoc: 10              │ 13         │     75     │     118     │     119       │     75           │ 0                 │
+      │ let%arr: 1000          │  5         │     11     │      15     │      14       │     11           │ 0                 │
+      │ bonsai.Map.map: 1000   │  6         │     12     │      16     │      15       │     12           │ 0                 │
+      │ assoc_simple: 1000     │  6         │     12     │      16     │      15       │     12           │ 0                 │
+      │ assoc: 1000            │ 13         │   6015     │   10018     │   10019       │   6015           │ 0                 │
+      │ let%arr: 100000        │  5         │     11     │      15     │      14       │     11           │ 0                 │
+      │ bonsai.Map.map: 100000 │  6         │     12     │      16     │      15       │     12           │ 0                 │
+      │ assoc_simple: 100000   │  6         │     12     │      16     │      15       │     12           │ 0                 │
+      │ assoc: 100000          │ 13         │ 600015     │ 1000018     │ 1000019       │ 600015           │ 0                 │
       └────────────────────────┴────────────┴────────────┴─────────────┴───────────────┴──────────────────┴───────────────────┘
 
       ======= Startup Incr Annotated Node Counts =======
@@ -103,24 +102,24 @@ module%test [@name "list"] _ = struct
 
   let%expect_test "Interaction" =
     Report.Interaction.run_and_print_compare
-      (module Perf_configs.Dynamic_num)
-      Perf_configs.Dynamic_num.scenarios
-      Perf_configs.Dynamic_num.all;
+      ~get_inject:(fun _ _ -> assert false)
+      ~computations:(force Perf_configs.Dynamic_num.all_computations)
+      (force Perf_configs.Dynamic_num.scenarios);
     [%expect
       {|
       ====== Node Count ======
       ┌────────────────────────────────┬─────────┬────────────────┬──────────────┬────────┐
       │                                │ let%arr │ bonsai.Map.map │ assoc_simple │ assoc  │
       ├────────────────────────────────┼─────────┼────────────────┼──────────────┼────────┤
-      │ 10, (1/5) updated 5 times      │ 4       │ 5              │ 5            │     68 │
-      │ 10, (1/10) updated 5 times     │ 4       │ 5              │ 5            │     68 │
-      │ 10, (1/50) updated 5 times     │ 4       │ 5              │ 5            │     68 │
-      │ 1000, (1/5) updated 5 times    │ 4       │ 5              │ 5            │   6008 │
-      │ 1000, (1/10) updated 5 times   │ 4       │ 5              │ 5            │   6008 │
-      │ 1000, (1/50) updated 5 times   │ 4       │ 5              │ 5            │   6008 │
-      │ 100000, (1/5) updated 5 times  │ 4       │ 5              │ 5            │ 600008 │
-      │ 100000, (1/10) updated 5 times │ 4       │ 5              │ 5            │ 600008 │
-      │ 100000, (1/50) updated 5 times │ 4       │ 5              │ 5            │ 600008 │
+      │ 10, (1/5) updated 5 times      │ 11      │ 12             │ 12           │     75 │
+      │ 10, (1/10) updated 5 times     │ 11      │ 12             │ 12           │     75 │
+      │ 10, (1/50) updated 5 times     │ 11      │ 12             │ 12           │     75 │
+      │ 1000, (1/5) updated 5 times    │ 11      │ 12             │ 12           │   6015 │
+      │ 1000, (1/10) updated 5 times   │ 11      │ 12             │ 12           │   6015 │
+      │ 1000, (1/50) updated 5 times   │ 11      │ 12             │ 12           │   6015 │
+      │ 100000, (1/5) updated 5 times  │ 11      │ 12             │ 12           │ 600015 │
+      │ 100000, (1/10) updated 5 times │ 11      │ 12             │ 12           │ 600015 │
+      │ 100000, (1/50) updated 5 times │ 11      │ 12             │ 12           │ 600015 │
       └────────────────────────────────┴─────────┴────────────────┴──────────────┴────────┘
 
       ====== Nodes Created ======
@@ -142,15 +141,15 @@ module%test [@name "list"] _ = struct
       ┌────────────────────────────────┬─────────┬────────────────┬──────────────┬────────┐
       │                                │ let%arr │ bonsai.Map.map │ assoc_simple │ assoc  │
       ├────────────────────────────────┼─────────┼────────────────┼──────────────┼────────┤
-      │ 10, (1/5) updated 5 times      │ 8       │ 12             │ 12           │     80 │
-      │ 10, (1/10) updated 5 times     │ 8       │ 12             │ 12           │     56 │
-      │ 10, (1/50) updated 5 times     │ 8       │ 12             │ 12           │     56 │
-      │ 1000, (1/5) updated 5 times    │ 8       │ 12             │ 12           │   5624 │
-      │ 1000, (1/10) updated 5 times   │ 8       │ 12             │ 12           │   3224 │
-      │ 1000, (1/50) updated 5 times   │ 8       │ 12             │ 12           │    664 │
-      │ 100000, (1/5) updated 5 times  │ 8       │ 12             │ 12           │ 560024 │
-      │ 100000, (1/10) updated 5 times │ 8       │ 12             │ 12           │ 320024 │
-      │ 100000, (1/50) updated 5 times │ 8       │ 12             │ 12           │  64024 │
+      │ 10, (1/5) updated 5 times      │ 28      │ 32             │ 32           │    100 │
+      │ 10, (1/10) updated 5 times     │ 28      │ 32             │ 32           │     76 │
+      │ 10, (1/50) updated 5 times     │ 28      │ 32             │ 32           │     76 │
+      │ 1000, (1/5) updated 5 times    │ 28      │ 32             │ 32           │   5644 │
+      │ 1000, (1/10) updated 5 times   │ 28      │ 32             │ 32           │   3244 │
+      │ 1000, (1/50) updated 5 times   │ 28      │ 32             │ 32           │    684 │
+      │ 100000, (1/5) updated 5 times  │ 28      │ 32             │ 32           │ 560044 │
+      │ 100000, (1/10) updated 5 times │ 28      │ 32             │ 32           │ 320044 │
+      │ 100000, (1/50) updated 5 times │ 28      │ 32             │ 32           │  64044 │
       └────────────────────────────────┴─────────┴────────────────┴──────────────┴────────┘
 
       ====== Nodes Invalidated ======
@@ -174,23 +173,22 @@ end
 module%test [@name "switch"] _ = struct
   let%expect_test "Startup" =
     Report.Startup.run_and_print_compare
-      (module Perf_configs.Switch)
-      Perf_configs.Switch.startup_inputs
-      Perf_configs.Switch.all;
+      ~computations:(force Perf_configs.Switch.all_computations)
+      Perf_configs.Switch.startup_inputs;
     [%expect
       {|
       ======= Startup Incr Node Stats =======
       ┌────────────────────────────────┬────────────┬────────────┬─────────────┬───────────────┬──────────────────┬───────────────────┐
       │                                │ max_height │ node_count │ max_node_id │ nodes_created │ nodes_recomputed │ nodes_invalidated │
       ├────────────────────────────────┼────────────┼────────────┼─────────────┼───────────────┼──────────────────┼───────────────────┤
-      │ arr+match: Start true          │ 4          │ 11         │ 14          │ 13            │ 11               │ 0                 │
-      │ arr+match (state): Start true  │ 1          │  4         │  6          │  5            │  4               │ 0                 │
-      │ match%sub: Start true          │ 6          │ 13         │ 22          │ 21            │ 13               │ 0                 │
-      │ match%sub (state): Start true  │ 6          │ 10         │ 20          │ 19            │ 10               │ 0                 │
-      │ arr+match: Start false         │ 4          │ 11         │ 14          │ 13            │ 11               │ 0                 │
-      │ arr+match (state): Start false │ 1          │  4         │  6          │  5            │  4               │ 0                 │
-      │ match%sub: Start false         │ 6          │ 13         │ 22          │ 21            │ 13               │ 0                 │
-      │ match%sub (state): Start false │ 6          │ 10         │ 20          │ 19            │ 10               │ 0                 │
+      │ arr+match: Start true          │  8         │ 18         │ 23          │ 22            │ 18               │ 0                 │
+      │ arr+match (state): Start true  │  5         │ 11         │ 15          │ 14            │ 11               │ 0                 │
+      │ match%sub: Start true          │ 10         │ 20         │ 31          │ 30            │ 20               │ 0                 │
+      │ match%sub (state): Start true  │ 10         │ 17         │ 29          │ 28            │ 17               │ 0                 │
+      │ arr+match: Start false         │  8         │ 18         │ 23          │ 22            │ 18               │ 0                 │
+      │ arr+match (state): Start false │  5         │ 11         │ 15          │ 14            │ 11               │ 0                 │
+      │ match%sub: Start false         │ 10         │ 20         │ 31          │ 30            │ 20               │ 0                 │
+      │ match%sub (state): Start false │ 10         │ 17         │ 29          │ 28            │ 17               │ 0                 │
       └────────────────────────────────┴────────────┴────────────┴─────────────┴───────────────┴──────────────────┴───────────────────┘
 
       ======= Startup Incr Annotated Node Counts =======
@@ -258,23 +256,23 @@ module%test [@name "switch"] _ = struct
 
   let%expect_test "Interaction" =
     Report.Interaction.run_and_print_compare
-      (module Perf_configs.Switch)
-      Perf_configs.Switch.scenarios
-      Perf_configs.Switch.all;
+      ~get_inject:(fun _ _ -> assert false)
+      ~computations:(force Perf_configs.Switch.all_computations)
+      Perf_configs.Switch.scenarios;
     [%expect
       {|
       ====== Node Count ======
       ┌───────────────────────────────┬───────────┬───────────────────┬───────────┬───────────────────┐
       │                               │ arr+match │ arr+match (state) │ match%sub │ match%sub (state) │
       ├───────────────────────────────┼───────────┼───────────────────┼───────────┼───────────────────┤
-      │ Start false, switch 1 times   │ 11        │ 4                 │ 13        │ 10                │
-      │ Start true, switch 1 times    │ 11        │ 4                 │ 13        │ 10                │
-      │ Start false, switch 5 times   │ 11        │ 4                 │ 13        │ 10                │
-      │ Start true, switch 5 times    │ 11        │ 4                 │ 13        │ 10                │
-      │ Start false, switch 10 times  │ 11        │ 4                 │ 13        │ 10                │
-      │ Start true, switch 10 times   │ 11        │ 4                 │ 13        │ 10                │
-      │ Start false, switch 100 times │ 11        │ 4                 │ 13        │ 10                │
-      │ Start true, switch 100 times  │ 11        │ 4                 │ 13        │ 10                │
+      │ Start false, switch 1 times   │ 18        │ 11                │ 20        │ 17                │
+      │ Start true, switch 1 times    │ 18        │ 11                │ 20        │ 17                │
+      │ Start false, switch 5 times   │ 18        │ 11                │ 20        │ 17                │
+      │ Start true, switch 5 times    │ 18        │ 11                │ 20        │ 17                │
+      │ Start false, switch 10 times  │ 18        │ 11                │ 20        │ 17                │
+      │ Start true, switch 10 times   │ 18        │ 11                │ 20        │ 17                │
+      │ Start false, switch 100 times │ 18        │ 11                │ 20        │ 17                │
+      │ Start true, switch 100 times  │ 18        │ 11                │ 20        │ 17                │
       └───────────────────────────────┴───────────┴───────────────────┴───────────┴───────────────────┘
 
       ====== Nodes Created ======
@@ -295,14 +293,14 @@ module%test [@name "switch"] _ = struct
       ┌───────────────────────────────┬───────────┬───────────────────┬───────────┬───────────────────┐
       │                               │ arr+match │ arr+match (state) │ match%sub │ match%sub (state) │
       ├───────────────────────────────┼───────────┼───────────────────┼───────────┼───────────────────┤
-      │ Start false, switch 1 times   │   0       │   0               │    0      │   0               │
-      │ Start true, switch 1 times    │   0       │   0               │    0      │   0               │
-      │ Start false, switch 5 times   │  12       │   8               │   44      │  32               │
-      │ Start true, switch 5 times    │  12       │   8               │   44      │  32               │
-      │ Start false, switch 10 times  │  26       │  17               │   90      │  65               │
-      │ Start true, switch 10 times   │  26       │  17               │   90      │  65               │
-      │ Start false, switch 100 times │ 296       │ 197               │ 1080      │ 785               │
-      │ Start true, switch 100 times  │ 296       │ 197               │ 1080      │ 785               │
+      │ Start false, switch 1 times   │   0       │   0               │    0      │    0              │
+      │ Start true, switch 1 times    │   0       │   0               │    0      │    0              │
+      │ Start false, switch 5 times   │  32       │  28               │   64      │   52              │
+      │ Start true, switch 5 times    │  32       │  28               │   64      │   52              │
+      │ Start false, switch 10 times  │  66       │  57               │  130      │  105              │
+      │ Start true, switch 10 times   │  66       │  57               │  130      │  105              │
+      │ Start false, switch 100 times │ 786       │ 687               │ 1570      │ 1275              │
+      │ Start true, switch 100 times  │ 786       │ 687               │ 1570      │ 1275              │
       └───────────────────────────────┴───────────┴───────────────────┴───────────┴───────────────────┘
 
       ====== Nodes Invalidated ======

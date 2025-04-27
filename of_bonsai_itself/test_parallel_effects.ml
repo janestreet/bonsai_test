@@ -40,6 +40,10 @@ let bisimulate_both_alls ~f =
   bisimulate ~parallel:Effect.all_parallel ~normal:Effect.all ~f
 ;;
 
+let bisimulate_both_all_units ~f =
+  bisimulate ~parallel:Effect.all_parallel_unit ~normal:Effect.all_unit ~f
+;;
+
 let%expect_test "Effect.both_parallel" =
   bisimulate_both_boths ~f:(fun both ~expect_diff:_ ->
     let fill_eff1, eff1 = Svar.create () in
@@ -455,5 +459,55 @@ let%expect_test "Effect.all_parallel out of order" =
           eff2 done
           eff3 done
           (all (1 2 3))
+          |}]))
+;;
+
+let%expect_test "Effect.all_parallel_unit sanity check" =
+  bisimulate_both_all_units ~f:(fun all_unit ~expect_diff ->
+    let fill_eff1, eff1 = Svar.create () in
+    let fill_eff2, eff2 = Svar.create () in
+    let fill_eff3, eff3 = Svar.create () in
+    let eff1 =
+      let%bind () = eff1 in
+      Effect.print_s [%message "eff1 done"]
+    in
+    let eff2 =
+      let%bind () = eff2 in
+      Effect.print_s [%message "eff2 done"]
+    in
+    let eff3 =
+      let%bind () = eff3 in
+      Effect.print_s [%message "eff3 done"]
+    in
+    let effect =
+      let%bind () = all_unit [ eff1; eff2; eff3 ] in
+      Effect.print_s [%message "all done!"]
+    in
+    Effect.Expert.handle effect;
+    fill_eff2 ();
+    expect_diff
+      ~parallel:(fun () -> [%expect {| "eff2 done" |}])
+      ~normal:(fun () -> [%expect {| |}]);
+    fill_eff3 ();
+    expect_diff
+      ~parallel:(fun () -> [%expect {| "eff3 done" |}])
+      ~normal:(fun () -> [%expect {| |}]);
+    fill_eff1 ();
+    (* NOTE: In the "normal"/non-parallel case, none of the events occurs unless they
+   its previous effect in the list has occurred. *)
+    expect_diff
+      ~parallel:(fun () ->
+        [%expect
+          {|
+          "eff1 done"
+          "all done!"
+          |}])
+      ~normal:(fun () ->
+        [%expect
+          {|
+          "eff1 done"
+          "eff2 done"
+          "eff3 done"
+          "all done!"
           |}]))
 ;;
