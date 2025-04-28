@@ -1,6 +1,6 @@
 open! Core
 open! Import
-module Bonsai = Bonsai.Proc
+module Bonsai = Bonsai_proc
 open Bonsai.Let_syntax
 open Bonsai.For_open
 module Private = Bonsai.Private
@@ -79,7 +79,7 @@ let%expect_test "cutoff_optimized_gets_no_warnings" =
 let%expect_test "sm1_with_const_input_gets_warning" =
   test_start [%here];
   let state_machine =
-    Bonsai.state_machine1
+    Bonsai.state_machine_with_input
       ~sexp_of_model:[%sexp_of: Int.t]
       ~sexp_of_action:[%sexp_of: Int.t]
       ~equal:[%equal: Int.t]
@@ -95,7 +95,7 @@ let%expect_test "sm1_with_const_input_gets_warning" =
 let%expect_test "sm1_optimized_gets_no_warnings" =
   test_start [%here];
   let state_machine =
-    Bonsai.state_machine1
+    Bonsai.state_machine_with_input
       ~sexp_of_model:[%sexp_of: Int.t]
       ~sexp_of_action:[%sexp_of: Int.t]
       ~equal:[%equal: Int.t]
@@ -111,7 +111,7 @@ let%expect_test "map2_with_unfolded_constants_and_sm1_with_const_input_both_warn
   test_start [%here];
   let c =
     let%sub value, _inject =
-      Bonsai.state_machine1
+      Bonsai.state_machine_with_input
         ~sexp_of_model:[%sexp_of: Int.t]
         ~sexp_of_action:[%sexp_of: Int.t]
         ~equal:[%equal: Int.t]

@@ -10,25 +10,24 @@ module%test [@name "mirror with var"] _ = struct
     let interactive = Bonsai.Expert.Var.create interactive in
     let store_set =
       (fun value ->
-        printf "store set to \"%s\"" value;
+        print_endline [%string "will set store to %{value} next frame"];
         Bonsai.Expert.Var.set store value)
       |> Ui_effect.of_sync_fun
     in
     let interactive_set =
       (fun value ->
-        printf "interactive set to \"%s\"" value;
+        print_endline [%string "will set interactive to %{value} next frame"];
         Bonsai.Expert.Var.set interactive value)
       |> Ui_effect.of_sync_fun
     in
     let component graph =
-      let (_ : unit Bonsai.t) =
+      let () =
         Bonsai_extra.mirror
           ~equal:[%equal: String.t]
           ~store_set:(return store_set)
           ~interactive_set:(return interactive_set)
           ~store_value:(Bonsai.Expert.Var.value store)
           ~interactive_value:(Bonsai.Expert.Var.value interactive)
-          ()
           graph
       in
       let%map store = Bonsai.Expert.Var.value store
@@ -50,8 +49,8 @@ module%test [@name "mirror with var"] _ = struct
     Handle.show handle;
     [%expect
       {|
+      will set interactive to a next frame
       store: a, interactive: b
-      interactive set to "a"
       |}];
     Handle.show handle;
     [%expect {| store: a, interactive: a |}]
@@ -65,8 +64,8 @@ module%test [@name "mirror with var"] _ = struct
     Handle.show handle;
     [%expect
       {|
+      will set store to b next frame
       store: a, interactive: b
-      store set to "b"
       |}];
     Handle.show handle;
     [%expect {| store: b, interactive: b |}]
@@ -80,8 +79,8 @@ module%test [@name "mirror with var"] _ = struct
     Handle.show handle;
     [%expect
       {|
+      will set interactive to b next frame
       store: b, interactive: a
-      interactive set to "b"
       |}];
     Handle.show handle;
     [%expect {| store: b, interactive: b |}]
@@ -96,8 +95,8 @@ module%test [@name "mirror with var"] _ = struct
     Handle.show handle;
     [%expect
       {|
+      will set store to c next frame
       store: b, interactive: c
-      store set to "c"
       |}];
     Handle.show handle;
     [%expect {| store: c, interactive: c |}]
@@ -111,22 +110,22 @@ module%test [@name "mirror with var"] _ = struct
     Handle.show handle;
     [%expect
       {|
+      will set store to b next frame
       store: a, interactive: b
-      store set to "b"
       |}];
     Bonsai.Expert.Var.set interactive "c";
     Handle.show handle;
     [%expect
       {|
+      will set store to c next frame
       store: b, interactive: c
-      store set to "c"
       |}];
     Bonsai.Expert.Var.set interactive "d";
     Handle.show handle;
     [%expect
       {|
+      will set store to d next frame
       store: c, interactive: d
-      store set to "d"
       |}];
     Handle.show handle;
     [%expect {| store: d, interactive: d |}]
@@ -140,22 +139,22 @@ module%test [@name "mirror with var"] _ = struct
     Handle.show handle;
     [%expect
       {|
+      will set interactive to b next frame
       store: b, interactive: a
-      interactive set to "b"
       |}];
     Bonsai.Expert.Var.set store "c";
     Handle.show handle;
     [%expect
       {|
+      will set store to b next frame
       store: c, interactive: b
-      store set to "b"
       |}];
     Bonsai.Expert.Var.set store "d";
     Handle.show handle;
     [%expect
       {|
+      will set interactive to d next frame
       store: d, interactive: b
-      interactive set to "d"
       |}];
     Handle.show handle;
     [%expect {| store: d, interactive: d |}]
@@ -182,14 +181,13 @@ module%test [@name "mirror with state"] _ = struct
           let%bind.Effect () = print_set "interactive" value in
           interactive_set value
       in
-      let (_ : unit Bonsai.t) =
+      let () =
         Bonsai_extra.mirror
           ~equal:[%equal: String.t]
           ~store_set
           ~interactive_set
           ~store_value
           ~interactive_value
-          ()
           graph
       in
       let%map store_value and interactive_value and store_set and interactive_set in
@@ -227,8 +225,8 @@ module%test [@name "mirror with state"] _ = struct
     Handle.show handle;
     [%expect
       {|
-      store: a, interactive: b
       interactive set to "a"
+      store: a, interactive: b
       |}];
     Handle.show handle;
     [%expect {| store: a, interactive: a |}]
@@ -243,8 +241,8 @@ module%test [@name "mirror with state"] _ = struct
     [%expect
       {|
       interactive set to "b"
-      store: a, interactive: b
       store set to "b"
+      store: a, interactive: b
       |}];
     Handle.show handle;
     [%expect {| store: b, interactive: b |}]
@@ -259,8 +257,8 @@ module%test [@name "mirror with state"] _ = struct
     [%expect
       {|
       store set to "b"
-      store: b, interactive: a
       interactive set to "b"
+      store: b, interactive: a
       |}];
     Handle.show handle;
     [%expect {| store: b, interactive: b |}]
@@ -276,8 +274,8 @@ module%test [@name "mirror with state"] _ = struct
       {|
       store set to "b"
       interactive set to "c"
-      store: b, interactive: c
       store set to "c"
+      store: b, interactive: c
       |}];
     Handle.show handle;
     [%expect {| store: c, interactive: c |}]
@@ -293,8 +291,8 @@ module%test [@name "mirror with state"] _ = struct
       {|
       store set to "b"
       interactive set to "c"
-      store: b, interactive: c
       store set to "c"
+      store: b, interactive: c
       |}];
     Handle.show handle;
     [%expect {| store: c, interactive: c |}]
@@ -309,24 +307,24 @@ module%test [@name "mirror with state"] _ = struct
     [%expect
       {|
       interactive set to "b"
-      store: a, interactive: b
       store set to "b"
+      store: a, interactive: b
       |}];
     Handle.do_actions handle [ `Interactive_set "c" ];
     Handle.show handle;
     [%expect
       {|
       interactive set to "c"
-      store: b, interactive: c
       store set to "c"
+      store: b, interactive: c
       |}];
     Handle.do_actions handle [ `Interactive_set "d" ];
     Handle.show handle;
     [%expect
       {|
       interactive set to "d"
-      store: c, interactive: d
       store set to "d"
+      store: c, interactive: d
       |}];
     Handle.show handle;
     [%expect {| store: d, interactive: d |}]
@@ -341,24 +339,24 @@ module%test [@name "mirror with state"] _ = struct
     [%expect
       {|
       store set to "b"
-      store: b, interactive: a
       interactive set to "b"
+      store: b, interactive: a
       |}];
     Handle.do_actions handle [ `Store_set "c" ];
     Handle.show handle;
     [%expect
       {|
       store set to "c"
-      store: c, interactive: b
       store set to "b"
+      store: c, interactive: b
       |}];
     Handle.do_actions handle [ `Store_set "d" ];
     Handle.show handle;
     [%expect
       {|
       store set to "d"
-      store: d, interactive: b
       interactive set to "d"
+      store: d, interactive: b
       |}];
     Handle.show handle;
     [%expect {| store: d, interactive: d |}]
@@ -382,9 +380,8 @@ module%test [@name "mirror' with var"] _ = struct
       |> Ui_effect.of_sync_fun
     in
     let component graph =
-      let (_ : unit Bonsai.t) =
+      let () =
         Bonsai_extra.mirror'
-          ()
           ~equal:[%equal: String.t]
           ~store_set:(return store_set)
           ~interactive_set:(return interactive_set)
@@ -414,11 +411,7 @@ module%test [@name "mirror' with var"] _ = struct
       prepare_test ~store:None ~interactive:(Some "hi")
     in
     Handle.show handle;
-    [%expect
-      {|
-      store: <none>, interactive: hi
-      store set to "hi"
-      |}];
+    [%expect {| store set to "hi"store: <none>, interactive: hi |}];
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
   ;;
@@ -428,11 +421,7 @@ module%test [@name "mirror' with var"] _ = struct
       prepare_test ~store:(Some "hi") ~interactive:None
     in
     Handle.show handle;
-    [%expect
-      {|
-      store: hi, interactive: <none>
-      interactive set to "hi"
-      |}];
+    [%expect {| interactive set to "hi"store: hi, interactive: <none> |}];
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
   ;;
@@ -450,11 +439,7 @@ module%test [@name "mirror' with var"] _ = struct
       prepare_test ~store:(Some "hi") ~interactive:(Some "hello")
     in
     Handle.show handle;
-    [%expect
-      {|
-      store: hi, interactive: hello
-      interactive set to "hi"
-      |}];
+    [%expect {| interactive set to "hi"store: hi, interactive: hello |}];
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
   ;;
@@ -465,11 +450,7 @@ module%test [@name "mirror' with var"] _ = struct
     [%expect {| store: <none>, interactive: <none> |}];
     Bonsai.Expert.Var.set store (Some "hi");
     Handle.show handle;
-    [%expect
-      {|
-      store: hi, interactive: <none>
-      interactive set to "hi"
-      |}];
+    [%expect {| interactive set to "hi"store: hi, interactive: <none> |}];
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
   ;;
@@ -480,11 +461,7 @@ module%test [@name "mirror' with var"] _ = struct
     [%expect {| store: <none>, interactive: <none> |}];
     Bonsai.Expert.Var.set interactive (Some "hi");
     Handle.show handle;
-    [%expect
-      {|
-      store: <none>, interactive: hi
-      store set to "hi"
-      |}];
+    [%expect {| store set to "hi"store: <none>, interactive: hi |}];
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
   ;;
@@ -506,11 +483,7 @@ module%test [@name "mirror' with var"] _ = struct
     Bonsai.Expert.Var.set interactive (Some "hi");
     Bonsai.Expert.Var.set store (Some "hello");
     Handle.show handle;
-    [%expect
-      {|
-      store: hello, interactive: hi
-      store set to "hi"
-      |}];
+    [%expect {| store set to "hi"store: hello, interactive: hi |}];
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
   ;;
@@ -524,11 +497,7 @@ module%test [@name "mirror' with var"] _ = struct
     Bonsai.Expert.Var.set interactive (Some "abc");
     Bonsai.Expert.Var.set store (Some "def");
     Handle.show handle;
-    [%expect
-      {|
-      store: def, interactive: abc
-      store set to "abc"
-      |}];
+    [%expect {| store set to "abc"store: def, interactive: abc |}];
     Handle.show handle;
     [%expect {| store: abc, interactive: abc |}]
   ;;
@@ -582,11 +551,7 @@ module%test [@name "mirror' with var"] _ = struct
     Bonsai.Expert.Var.set store (Some "abc");
     Bonsai.Expert.Var.set interactive None;
     Handle.show handle;
-    [%expect
-      {|
-      store: abc, interactive: <none>
-      interactive set to "abc"
-      |}];
+    [%expect {| interactive set to "abc"store: abc, interactive: <none> |}];
     Handle.show handle;
     [%expect {| store: abc, interactive: abc |}]
   ;;
@@ -603,11 +568,7 @@ module%test [@name "mirror' with var"] _ = struct
     Bonsai.Expert.Var.set interactive (Some "abc");
     Bonsai.Expert.Var.set store None;
     Handle.show handle;
-    [%expect
-      {|
-      store: <none>, interactive: abc
-      store set to "abc"
-      |}];
+    [%expect {| store set to "abc"store: <none>, interactive: abc |}];
     Handle.show handle;
     [%expect {| store: abc, interactive: abc |}]
   ;;
@@ -649,14 +610,13 @@ module%test [@name "mirror' with state"] _ = struct
           in
           interactive_set interactive
       in
-      let (_ : unit Bonsai.t) =
+      let () =
         Bonsai_extra.mirror'
           ~equal:[%equal: String.t]
           ~store_set:store_set_some
           ~interactive_set:interactive_set_some
           ~store_value
           ~interactive_value
-          ()
           graph
       in
       let%map store_value
@@ -704,8 +664,8 @@ module%test [@name "mirror' with state"] _ = struct
     Handle.show handle;
     [%expect
       {|
-      store: <none>, interactive: hi
       store set to "hi"
+      store: <none>, interactive: hi
       |}];
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
@@ -716,8 +676,8 @@ module%test [@name "mirror' with state"] _ = struct
     Handle.show handle;
     [%expect
       {|
-      store: hi, interactive: <none>
       interactive set to "hi"
+      store: hi, interactive: <none>
       |}];
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
@@ -734,8 +694,8 @@ module%test [@name "mirror' with state"] _ = struct
     Handle.show handle;
     [%expect
       {|
-      store: hi, interactive: hello
       interactive set to "hi"
+      store: hi, interactive: hello
       |}];
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
@@ -750,8 +710,8 @@ module%test [@name "mirror' with state"] _ = struct
     [%expect
       {|
       store set to "hi"
-      store: hi, interactive: <none>
       interactive set to "hi"
+      store: hi, interactive: <none>
       |}];
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
@@ -766,8 +726,8 @@ module%test [@name "mirror' with state"] _ = struct
     [%expect
       {|
       interactive set to "hi"
-      store: <none>, interactive: hi
       store set to "hi"
+      store: <none>, interactive: hi
       |}];
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
@@ -799,8 +759,8 @@ module%test [@name "mirror' with state"] _ = struct
       {|
       interactive set to "hi"
       store set to "hello"
-      store: hello, interactive: hi
       store set to "hi"
+      store: hello, interactive: hi
       |}];
     Handle.show handle;
     [%expect {| store: hi, interactive: hi |}]
@@ -817,8 +777,8 @@ module%test [@name "mirror' with state"] _ = struct
       {|
       interactive set to "abc"
       store set to "def"
-      store: def, interactive: abc
       store set to "abc"
+      store: def, interactive: abc
       |}];
     Handle.show handle;
     [%expect {| store: abc, interactive: abc |}]
@@ -886,8 +846,8 @@ module%test [@name "mirror' with state"] _ = struct
       {|
       store set to "abc"
       interactive set to "<none>"
-      store: abc, interactive: <none>
       interactive set to "abc"
+      store: abc, interactive: <none>
       |}];
     Handle.show handle;
     [%expect {| store: abc, interactive: abc |}]
@@ -911,8 +871,8 @@ module%test [@name "mirror' with state"] _ = struct
       {|
       interactive set to "abc"
       store set to "<none>"
-      store: <none>, interactive: abc
       store set to "abc"
+      store: <none>, interactive: abc
       |}];
     Handle.show handle;
     [%expect {| store: abc, interactive: abc |}]

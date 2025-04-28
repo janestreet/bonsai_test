@@ -15,6 +15,6 @@ include module type of struct
 end
 
 val dummy_source_code_position : Source_code_position.t
-val opaque_const : 'a -> 'a Bonsai.Proc.Computation.t
-val opaque_const_value : 'a -> 'a Bonsai.Proc.Value.t
-val opaque_computation : 'a Bonsai.Proc.Computation.t -> 'a Bonsai.Proc.Computation.t
+val opaque_const : 'a -> Bonsai.graph -> 'a Bonsai.t
+val opaque_const_value : 'a -> 'a Bonsai.t
+val opaque_computation : (Bonsai.graph -> 'a Bonsai.t) -> Bonsai.graph -> 'a Bonsai.t

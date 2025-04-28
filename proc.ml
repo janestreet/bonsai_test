@@ -1,6 +1,4 @@
 open! Core
-module Bonsai = Bonsai.Proc
-open Bonsai.For_open
 open! Import
 
 module Expect_test_config = struct
@@ -90,12 +88,11 @@ module Handle = struct
     computation
     =
     let (module R) = result_spec in
-    let component (_ : unit Value.t) =
+    let component (_ : unit Bonsai.t) graph =
       let open Bonsai.Let_syntax in
-      let%sub result = computation in
-      return
-        (let%map result in
-         result, lazy (R.view result), R.incoming result)
+      let result = computation graph in
+      let%arr result in
+      result, lazy (R.view result), R.incoming result
     in
     let time_source = Bonsai.Time_source.create ~start:start_time in
     let handle = Driver.create ~optimize ~initial_input:() ~time_source component in
@@ -249,56 +246,55 @@ module Handle = struct
     Driver.schedule_event handle event
   ;;
 
-  let recompute_view (handle : (_, 'r) Driver.t) =
+  let recompute_view ?(simulate_diff_patch = fun _ -> ()) (handle : (_, 'r) Driver.t) =
     Driver.flush handle;
-    let (_ : 'r) = Driver.result handle in
+    let computed, _, _ = Driver.result handle in
+    simulate_diff_patch computed;
     Driver.trigger_lifecycles handle
   ;;
 
-  let recompute_view_until_stable ?(max_computes = 100) handle =
-    recompute_view handle;
+  let recompute_view_until_stable ?(max_computes = 100) ?simulate_diff_patch handle =
+    recompute_view ?simulate_diff_patch handle;
     let computes = ref 1 in
     while Driver.has_after_display_events handle do
-      recompute_view handle;
+      recompute_view ?simulate_diff_patch handle;
       computes := !computes + 1;
       if !computes >= max_computes
       then failwithf "view not stable after %d recomputations" max_computes ()
     done
   ;;
 
-  let generic_show handle ~before ~f =
-    let before = before handle in
-    Driver.flush handle;
+  let recompute_store_and_show ?simulate_diff_patch handle =
+    recompute_view ?simulate_diff_patch handle;
     let _, view, _ = Driver.result handle in
     Driver.store_view handle view;
-    let r = f before view in
-    Driver.trigger_lifecycles handle;
-    r
+    view
   ;;
 
-  let show handle =
-    generic_show handle ~before:(Fn.const ()) ~f:(fun () view ->
-      print_endline (Lazy.force view))
+  let show_into_string ?simulate_diff_patch handle =
+    recompute_store_and_show ?simulate_diff_patch handle |> Lazy.force
   ;;
 
-  let show_into_string handle =
-    generic_show handle ~before:(Fn.const ()) ~f:(fun () view -> Lazy.force view)
+  let show ?simulate_diff_patch handle =
+    show_into_string ?simulate_diff_patch handle |> print_endline
   ;;
 
   let show_diff
     ?(location_style = Patdiff_kernel.Format.Location_style.None)
     ?(diff_context = 16)
+    ?simulate_diff_patch
     handle
     =
-    generic_show handle ~before:Driver.last_view ~f:(fun a b ->
-      Expect_test_patdiff.print_patdiff
-        ~location_style
-        ~context:diff_context
-        (Lazy.force a)
-        (Lazy.force b))
+    let before = Driver.last_view handle in
+    let after = recompute_store_and_show ?simulate_diff_patch handle in
+    Expect_test_patdiff.print_patdiff
+      ~location_style
+      ~context:diff_context
+      (force before)
+      (force after)
   ;;
 
-  let store_view handle = generic_show handle ~before:(Fn.const ()) ~f:(fun () _ -> ())
+  let store_view handle = ignore (recompute_store_and_show handle : string Lazy.t)
 
   let show_model handle =
     Driver.flush handle;

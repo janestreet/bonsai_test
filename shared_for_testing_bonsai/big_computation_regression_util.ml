@@ -2,7 +2,7 @@ open! Core
 open Bonsai_test
 
 module For_proc = struct
-  module Bonsai = Bonsai.Proc
+  module Bonsai = Bonsai_proc
   open Bonsai.Let_syntax
 
   let basic : height:int -> width:int -> String.Set.t Bonsai.Computation.t =

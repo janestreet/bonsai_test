@@ -1,7 +1,7 @@
 open! Core
 open! Import
 open Bonsai_test
-module Bonsai = Bonsai.Proc
+module Bonsai = Bonsai_proc
 open Bonsai.Let_syntax
 
 (* this test needs to be in its own file because the crash happens at runtime and will

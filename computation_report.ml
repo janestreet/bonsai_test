@@ -117,6 +117,7 @@ module Startup = struct
     let driver, incr_report =
       Incr_report.measure (fun () ->
         Bonsai_driver.create
+          ~instrumentation:(Bonsai_driver.Instrumentation.default_for_test_handles ())
           ~time_source:(Bonsai.Time_source.create ~start:Time_ns.epoch)
           c)
     in
@@ -161,19 +162,11 @@ module Startup = struct
 
   let const_value_not_constant_folded x = Bonsai.Expert.Var.(value (create x))
 
-  let run_and_print_compare
-    (type conf input action)
-    (module Config : Config
-      with type t = conf
-       and type input = input
-       and type action = action)
-    inputs
-    configs
-    =
-    List.cartesian_product inputs configs
-    |> List.map ~f:(fun ((input_name, input), config) ->
-      let c = Config.computation config (const_value_not_constant_folded input) in
-      String.uncapitalize (Config.name config) ^ ": " ^ input_name, run c)
+  let run_and_print_compare ~computations inputs =
+    List.cartesian_product inputs computations
+    |> List.map ~f:(fun ((input_name, input), (comp_name, computation)) ->
+      let c = computation (const_value_not_constant_folded input) in
+      String.uncapitalize comp_name ^ ": " ^ input_name, run c)
     |> print_many
   ;;
 
@@ -212,25 +205,13 @@ module Startup = struct
       reports
   ;;
 
-  let diff_pairs_incr_summary_only
-    (type conf input action)
-    ?title
-    (module Config : Config
-      with type t = conf
-       and type input = input
-       and type action = action)
-    inputs
-    pairs
-    =
-    List.cartesian_product inputs pairs
-    |> List.map ~f:(fun ((input_name, input), (comparison_name, config1, config2)) ->
-      let r1 =
-        Config.computation config1 (const_value_not_constant_folded input) |> run
-      in
-      let r2 =
-        Config.computation config2 (const_value_not_constant_folded input) |> run
-      in
-      String.uncapitalize comparison_name ^ ": " ^ input_name, (r1, r2))
+  let diff_pairs_incr_summary_only ?title ~computation_pairs inputs =
+    List.cartesian_product inputs computation_pairs
+    |> List.map
+         ~f:(fun ((input_name, input), (comparison_name, computation1, computation2)) ->
+           let r1 = computation1 (const_value_not_constant_folded input) |> run in
+           let r2 = computation2 (const_value_not_constant_folded input) |> run in
+           String.uncapitalize comparison_name ^ ": " ^ input_name, (r1, r2))
     |> print_many_diff ?title
   ;;
 end
@@ -239,7 +220,12 @@ module Interaction = struct
   let run ~get_inject c interactions =
     Mini_profile.start ~label:"prepare driver";
     let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
-    let driver = Bonsai_driver.create ~time_source c in
+    let driver =
+      Bonsai_driver.create
+        ~instrumentation:(Bonsai_driver.Instrumentation.default_for_test_handles ())
+        ~time_source
+        c
+    in
     let inject_action = Bonsai_driver.result driver |> get_inject in
     Mini_profile.stop ~label:"prepare driver";
     let (), incr_report =
@@ -257,24 +243,12 @@ module Interaction = struct
     incr_report
   ;;
 
-  let run'
-    (type conf input action)
-    (module Config : Config
-      with type t = conf
-       and type input = input
-       and type action = action)
-    ~initial
-    ~interaction
-    config
-    =
+  let run' ~get_inject ~computation ~initial ~interaction =
     (* This has to happen in an inner loop, so that we get a fresh set of vars
        for each run. *)
     let input = Input.create initial in
     let interactions = Interaction.finalize ~filter_profiles:true (interaction input) in
-    run
-      ~get_inject:Config.get_inject
-      (Config.computation config (Input.value input))
-      interactions
+    run ~get_inject (computation (Input.value input)) interactions
   ;;
 
   let run_and_print_many
@@ -286,7 +260,7 @@ module Interaction = struct
     ?(print_num_invalidated = true)
     ?title
     scenarios
-    to_compare
+    ~to_compare
     ~run_report
     ~format_output
     =
@@ -294,8 +268,7 @@ module Interaction = struct
     let reports =
       List.map scenarios ~f:(fun { Scenario.initial; test_name; interaction } ->
         let cells =
-          List.map to_compare ~f:(fun to_compare ->
-            run_report ~initial ~interaction to_compare)
+          List.map to_compare ~f:(fun x -> run_report ~initial ~interaction x)
         in
         test_name, cells)
     in
@@ -339,7 +312,6 @@ module Interaction = struct
   ;;
 
   let run_and_print_compare
-    (type conf input action)
     ?print_max_height
     ?print_node_count
     ?print_max_node_id
@@ -347,12 +319,9 @@ module Interaction = struct
     ?print_num_recomputed
     ?print_num_invalidated
     ?title
-    (module Config : Config
-      with type t = conf
-       and type input = input
-       and type action = action)
+    ~get_inject
+    ~computations
     scenarios
-    configs
     =
     run_and_print_many
       ?print_max_height
@@ -363,15 +332,14 @@ module Interaction = struct
       ?print_num_invalidated
       ?title
       scenarios
-      configs
-      ~run_report:(fun ~initial ~interaction config ->
-        let report = run' (module Config) ~initial ~interaction config in
-        String.uncapitalize (Config.name config), report)
+      ~to_compare:computations
+      ~run_report:(fun ~initial ~interaction (comp_name, computation) ->
+        let report = run' ~get_inject ~computation ~initial ~interaction in
+        String.uncapitalize comp_name, report)
       ~format_output:(fun ~f report -> f report |> Int.to_string)
   ;;
 
   let diff_pairs
-    (type conf input action)
     ?print_max_height
     ?print_node_count
     ?print_max_node_id
@@ -379,12 +347,9 @@ module Interaction = struct
     ?print_num_recomputed
     ?print_num_invalidated
     ?title
-    (module Config : Config
-      with type t = conf
-       and type input = input
-       and type action = action)
+    ~get_inject
+    ~computation_pairs
     scenarios
-    pairs
     =
     run_and_print_many
       ?print_max_height
@@ -395,10 +360,10 @@ module Interaction = struct
       ?print_num_invalidated
       ?title
       scenarios
-      pairs
-      ~run_report:(fun ~initial ~interaction (name, config1, config2) ->
-        let r1 = run' (module Config) ~initial ~interaction config1 in
-        let r2 = run' (module Config) ~initial ~interaction config2 in
+      ~to_compare:computation_pairs
+      ~run_report:(fun ~initial ~interaction (name, computation1, computation2) ->
+        let r1 = run' ~get_inject ~computation:computation1 ~initial ~interaction in
+        let r2 = run' ~get_inject ~computation:computation2 ~initial ~interaction in
         name, (r1, r2))
       ~format_output:(fun ~f (fst, snd) -> format_diff (f fst) (f snd))
   ;;

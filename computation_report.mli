@@ -26,19 +26,15 @@ module Startup : sig
     -> unit
 
   val run_and_print_compare
-    :  (module Config with type t = 'conf and type input = 'input and type action = 'action)
+    :  computations:(string * ('input, _) compare_computation) list
     -> (string * 'input) list
-    -> 'conf list
     -> unit
 
   val diff_pairs_incr_summary_only
     :  ?title:string
-    -> (module Config
-          with type t = 'conf
-           and type input = 'input
-           and type action = 'action)
+    -> computation_pairs:
+         (string * ('input, _) compare_computation * ('input, _) compare_computation) list
     -> (string * 'input) list
-    -> (string * 'conf * 'conf) list
     -> unit
 end
 
@@ -50,12 +46,9 @@ module Interaction : sig
     -> Incr_report.t
 
   (** [print_max_height] defaults to [false] b/c it's the same for all interactions
-      [print_node_count] defaults to [true]
-      [print_max_node_id] defaults to [false] b/c it's almost the same as [print_num_created].
-      [print_num_created] defaults to [true]
-      [print_num_recomputed] defaults to [true]
-      [print_num_invalidated] defaults to [true]
-    *)
+      [print_node_count] defaults to [true] [print_max_node_id] defaults to [false] b/c
+      it's almost the same as [print_num_created]. [print_num_created] defaults to [true]
+      [print_num_recomputed] defaults to [true] [print_num_invalidated] defaults to [true] *)
   val run_and_print_compare
     :  ?print_max_height:bool
     -> ?print_node_count:bool
@@ -64,12 +57,9 @@ module Interaction : sig
     -> ?print_num_recomputed:bool
     -> ?print_num_invalidated:bool
     -> ?title:string
-    -> (module Config
-          with type t = 'conf
-           and type input = 'input
-           and type action = 'action)
+    -> get_inject:('output -> 'action -> unit Bonsai.Effect.t)
+    -> computations:(string * ('input, 'output) compare_computation) list
     -> ('input, 'action) Scenario.t list
-    -> 'conf list
     -> unit
 
   val diff_pairs
@@ -80,11 +70,12 @@ module Interaction : sig
     -> ?print_num_recomputed:bool
     -> ?print_num_invalidated:bool
     -> ?title:string
-    -> (module Config
-          with type t = 'conf
-           and type input = 'input
-           and type action = 'action)
+    -> get_inject:('output -> 'action -> unit Bonsai.Effect.t)
+    -> computation_pairs:
+         (string
+         * ('input, 'output) compare_computation
+         * ('input, 'output) compare_computation)
+           list
     -> ('input, 'action) Scenario.t list
-    -> (string * 'conf * 'conf) list
     -> unit
 end

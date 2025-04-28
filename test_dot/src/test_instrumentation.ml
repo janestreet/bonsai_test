@@ -1,17 +1,15 @@
-module Bonsai_lib = Bonsai.Proc
+module Bonsai_lib = Bonsai_proc
 open! Bonsai_lib
 open! Bonsai.Let_syntax
 open! Core
 open Bonsai_test
-open Bonsai.Private.Instrumentation
 module Node_path = Bonsai.Private.Node_path
 module Graph_info = Bonsai.Private.Graph_info
 
-(** These tests are for our instrumentation of the incremental computation graph.
-    They can be read as follows:
+(** These tests are for our instrumentation of the incremental computation graph. They can
+    be read as follows:
 
-    {v (opaque-const) --feeds into-> leaf1 --named-as-> _0 v}
-*)
+    {v (opaque-const) --feeds into-> leaf1 --named-as-> _0 v} *)
 
 module Expect_test_config = struct
   include Expect_test_config
@@ -106,10 +104,13 @@ let instrument_computation component =
   let print_graph_info_on_update = ref false in
   let raw_computation = Bonsai.Private.top_level_handle component in
   let instrumented_computation =
-    Graph_info.iter_graph_updates raw_computation ~on_update:(fun gm ->
-      graph_info := gm;
-      if !print_graph_info_on_update then print_graph_info !graph_info)
-    |> instrument_computation ~start_timer ~stop_timer
+    Bonsai.Private.Instrumentation.For_testing.instrument_for_profiling
+      ~set_latest_graph_info:(fun gm ->
+        graph_info := gm;
+        if !print_graph_info_on_update then print_graph_info !graph_info)
+      ~start_timer
+      ~stop_timer
+      raw_computation
   in
   print_graph_info !graph_info;
   print_graph_info_on_update := true;
@@ -266,8 +267,8 @@ let%expect_test _ =
   Handle.show handle;
   [%expect
     {|
-    start-##map5 2x5_6
-    stop-##map5 2x5_6
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     15
     |}]
 ;;
@@ -354,10 +355,10 @@ let%expect_test "state" =
   Handle.show handle;
   [%expect
     {|
-    start-##leaf0-apply_action _1
-    stop-##leaf0-apply_action _1
-    start-##leaf0-apply_action _1
-    stop-##leaf0-apply_action _1
+    start-##leaf0-apply_action _1 lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-##leaf0-apply_action _1 lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    start-##leaf0-apply_action _1 lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-##leaf0-apply_action _1 lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     2
     |}]
 ;;
@@ -365,7 +366,7 @@ let%expect_test "state" =
 let dynamic_state () =
   test_start [%here];
   let%sub state =
-    Bonsai.state_machine1
+    Bonsai.state_machine_with_input
       ~sexp_of_model:[%sexp_of: Int.t]
       ~equal:[%equal: Int.t]
       ~sexp_of_action:[%sexp_of: Unit.t]
@@ -409,10 +410,10 @@ let%expect_test "dynamic_state" =
   Handle.recompute_view handle;
   [%expect
     {|
-    start-##leaf1-apply_action _1
-    stop-##leaf1-apply_action _1
-    start-##leaf1-apply_action _1
-    stop-##leaf1-apply_action _1
+    start-##leaf1-apply_action _1 lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-##leaf1-apply_action _1 lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    start-##leaf1-apply_action _1 lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-##leaf1-apply_action _1 lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     |}];
   Handle.show handle;
   [%expect {| 2 |}]
@@ -564,10 +565,10 @@ let%expect_test "assoc" =
   Handle.show handle;
   [%expect
     {|
-    start-##map 2x2_3
-    stop-##map 2x2_3
-    start-##map 2x2_3
-    stop-##map 2x2_3
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     ((-1 0) (1 0))
     |}]
 ;;
@@ -611,10 +612,10 @@ let%expect_test "assoc constant folding" =
   Handle.show handle;
   [%expect
     {|
-    start-##map 2_2
-    stop-##map 2_2
-    start-##map 2_2
-    stop-##map 2_2
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     ((-1 0) (1 0))
     |}]
 ;;
@@ -662,24 +663,24 @@ let%expect_test "nested values" =
   Handle.show handle;
   [%expect
     {|
-    start-##map 1x2_2
-    stop-##map 1x2_2
-    start-##map 1_1
-    stop-##map 1_1
-    start-##map _2
-    stop-##map _2
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     0
     |}];
   Bonsai.Var.set a_var 2;
   Handle.show handle;
   [%expect
     {|
-    start-##map 1x2_2
-    stop-##map 1x2_2
-    start-##map 1_1
-    stop-##map 1_1
-    start-##map _2
-    stop-##map _2
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     2
     |}];
   Handle.show handle;
@@ -735,18 +736,18 @@ let%expect_test "enum" =
   Handle.show handle;
   [%expect
     {|
-    start-##map 1_2
-    stop-##map 1_2
-    start-##map 2-3_2
-    stop-##map 2-3_2
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     false
     |}];
   Bonsai.Var.set match_var false;
   Handle.show handle;
   [%expect
     {|
-    start-##map 1_2
-    stop-##map 1_2
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     false
     |}];
   Bonsai.Var.set a_var 5;
@@ -756,18 +757,18 @@ let%expect_test "enum" =
   Handle.show handle;
   [%expect
     {|
-    start-##map 1_2
-    stop-##map 1_2
-    start-##map 2-3_2
-    stop-##map 2-3_2
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     true
     |}];
   Bonsai.Var.set a_var 10;
   Handle.show handle;
   [%expect
     {|
-    start-##map 2-3_2
-    stop-##map 2-3_2
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     true
     |}]
 ;;
@@ -814,16 +815,16 @@ let%expect_test "lazy" =
   Handle.show handle;
   [%expect
     {|
-    start-##map 1_2
-    stop-##map 1_2
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     0
     |}];
   Bonsai.Var.set match_var false;
   Handle.show handle;
   [%expect
     {|
-    start-##map 1_2
-    stop-##map 1_2
+    start-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
+    stop-lib/bonsai/test/test_dot/src/test_instrumentation.ml:LINE:COL
     tree:
       1_1 return @ this_file:LINE:COL -> _1 sub @ this_file:LINE:COL
       1_2 map @ this_file:LINE:COL -> 1_1 return @ this_file:LINE:COL

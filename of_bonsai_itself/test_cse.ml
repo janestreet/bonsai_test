@@ -1,6 +1,6 @@
 open! Core
 open! Import
-module Bonsai = Bonsai.Proc
+module Bonsai = Bonsai_proc
 open Bonsai.Let_syntax
 open Bonsai_test
 
@@ -218,19 +218,19 @@ let%expect_test "double-use inside of some nested subs" =
         (from (
           Sub
           (from (Return (value Incr)))
-          (via (Test 6))
+          (via (Test 7))
           (into (
             Return (
               value (
-                Mapn (inputs ((Named (uid (Test 6))) (Mapn (inputs (Incr)))))))))))
-        (via (Test 8))
+                Mapn (inputs ((Named (uid (Test 7))) (Mapn (inputs (Incr)))))))))))
+        (via (Test 9))
         (into (
           Return (
             value (
               Mapn (
                 inputs (
                   (Named (uid (Test 5)))
-                  (Named (uid (Test 8))))))))))))
+                  (Named (uid (Test 9))))))))))))
     computing!
     computing!
     |}]

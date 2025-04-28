@@ -29,7 +29,7 @@ depends: [
   "ppx_pattern_bind"
   "ppx_quick_test"
   "virtual_dom"
-  "dune"                     {>= "3.11.0"}
+  "dune"                     {>= "3.17.0"}
   "re"                       {>= "1.8.0"}
 ]
 available: arch != "arm32" & arch != "x86_32"

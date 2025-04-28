@@ -1,23 +1,23 @@
 open! Core
 open! Import
-module Bonsai = Bonsai.Proc
+module Bonsai = Bonsai_proc
 open Bonsai.For_open
 open Bonsai.Let_syntax
 open Bonsai_test
 
 let no_op_sm0 =
-  Bonsai.state_machine0 ~apply_action:(fun _context () () -> ()) ~default_model:() ()
+  Bonsai.state_machine ~apply_action:(fun _context () () -> ()) ~default_model:() ()
 ;;
 
 let no_op_sm1 =
-  Bonsai.state_machine1
+  Bonsai.state_machine_with_input
     (opaque_const_value ())
     ~apply_action:(fun _context _input () () -> ())
     ~default_model:()
 ;;
 
 let copying_sm1 input =
-  Bonsai.state_machine1
+  Bonsai.state_machine_with_input
     ~default_model:0
     ~apply_action:(fun _context input _ () ->
       match input with
@@ -68,13 +68,15 @@ let%expect_test "Sub/Leaf1/Leaf0" =
   [%expect
     {|
     skipped stabilization
-    ("Processed action" (action (Sub_from (Sub_from (Leaf_static <opaque>)))))
+    ("Processed action"
+     (action (Sub_from (Sub_from (Sub_from (Leaf_static <opaque>))))))
     stabilized
-    ("Processed action" (action (Sub_from (Sub_into (Leaf_dynamic <opaque>)))))
+    ("Processed action"
+     (action (Sub_from (Sub_from (Sub_into (Leaf_dynamic <opaque>))))))
     skipped stabilization
-    ("Processed action" (action (Sub_into (Sub_from (Leaf_static <opaque>)))))
+    ("Processed action" (action (Sub_from (Sub_into (Leaf_static <opaque>)))))
     stabilized
-    ("Processed action" (action (Sub_into (Sub_into (Leaf_dynamic <opaque>)))))
+    ("Processed action" (action (Sub_into (Leaf_dynamic <opaque>))))
     |}];
   Handle.print_stabilization_tracker_stats handle;
   [%expect
@@ -391,7 +393,7 @@ let%expect_test "Dynamic actions applied across frames don't need extra stabiliz
 let%expect_test "A static action that affects a dynamic action forces a restabilization" =
   let component =
     let%sub input, inject_static =
-      Bonsai.state_machine0
+      Bonsai.state_machine
         ~default_model:0
         ~apply_action:(fun _context model () -> model + 1)
         ()
@@ -471,14 +473,14 @@ let%expect_test "state_machine1 depending on a Bonsai var behaves properly" =
   Handle.show handle;
   [%expect
     {|
-    stabilized
+    skipped stabilization
     Model: 2
     |}];
   Handle.print_stabilization_tracker_stats handle;
   [%expect
     {|
-    ((stabilizations_before_actions 1) (stabilizations_caused_by_var_changes 1)
-     (stabilizations_skipped 0) (prunes_run 0) (branches_pruned 0))
+    ((stabilizations_before_actions 0) (stabilizations_caused_by_var_changes 0)
+     (stabilizations_skipped 1) (prunes_run 0) (branches_pruned 0))
     |}]
 ;;
 
@@ -546,14 +548,14 @@ let%expect_test "state_machine1 depending on an Incr.compute with an Incr var be
   Handle.show handle;
   [%expect
     {|
-    stabilized
+    skipped stabilization
     Model: 2
     |}];
   Handle.print_stabilization_tracker_stats handle;
   [%expect
     {|
-    ((stabilizations_before_actions 1) (stabilizations_caused_by_var_changes 1)
-     (stabilizations_skipped 0) (prunes_run 0) (branches_pruned 0))
+    ((stabilizations_before_actions 0) (stabilizations_caused_by_var_changes 0)
+     (stabilizations_skipped 1) (prunes_run 0) (branches_pruned 0))
     |}]
 ;;
 
@@ -569,7 +571,7 @@ let%expect_test "state_machine1 that schedules an action which sets an upstream 
     in
     let%sub state, inject = copying_sm1 value in
     let%sub (), inject_mutation =
-      Bonsai.state_machine0
+      Bonsai.state_machine
         ~default_model:()
         ~apply_action:(fun _context () value -> Incr.Var.set incr_var value)
         ()
@@ -654,7 +656,7 @@ let%expect_test "state_machine1 depending on Incr.Expert.Node.t that breaks abst
     in
     let%sub model, inject_copy = copying_sm1 value in
     let%sub (), inject_stale =
-      Bonsai.state_machine0
+      Bonsai.state_machine
         ~default_model:()
         ~apply_action:(fun _context () () -> Incr.Expert.Node.make_stale expert_node)
         ()
@@ -1195,9 +1197,22 @@ module%test [@name "interesting action delivery cases"] _ = struct
       Bonsai.with_model_resetter
         (Bonsai.wrap
            ~default_model:0
-           ~apply_action:(fun _context (result, _) _model -> function
-             | `Set i -> i
-             | `Copy -> result)
+           ~apply_action:(fun _context result model action ->
+             match result with
+             | Inactive ->
+               let action = sexp_of_opaque action in
+               eprint_s
+                 [%message
+                   "An action sent to a [wrap] has been dropped because its input was \
+                    not present. This happens when the [wrap] is inactive when it \
+                    receives a message."
+                     (action : Sexp.t)
+                     [%here]];
+               model
+             | Active (result, _) ->
+               (match action with
+                | `Set i -> i
+                | `Copy -> result))
            ~f:(fun model inject_outer ->
              let%arr model and inject_outer in
              model, inject_outer)
@@ -1245,12 +1260,25 @@ module%test [@name "interesting action delivery cases"] _ = struct
     let component =
       Bonsai.wrap
         ~default_model:0
-        ~apply_action:(fun _context (result, _) _model -> function
-          | `Set i -> i
-          | `Copy -> result)
+        ~apply_action:(fun _context result model action ->
+          match result with
+          | Inactive ->
+            let action = sexp_of_opaque action in
+            eprint_s
+              [%message
+                "An action sent to a [wrap] has been dropped because its input was not \
+                 present. This happens when the [wrap] is inactive when it receives a \
+                 message."
+                  (action : Sexp.t)
+                  [%here]];
+            model
+          | Active (result, _) ->
+            (match action with
+             | `Set i -> i
+             | `Copy -> result))
         ~f:(fun model inject_outer ->
           let%sub (), inject_inner =
-            Bonsai.state_machine1
+            Bonsai.state_machine_with_input
               ~default_model:()
               ~apply_action:(fun context inject_outer _model action ->
                 match inject_outer with
