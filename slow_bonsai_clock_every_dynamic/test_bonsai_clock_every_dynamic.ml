@@ -64,7 +64,7 @@ let component ?trigger_on_activate ~when_to_start_next_effect (local_ graph) =
     match effect_time with
     | None -> effect
     | Some effect_time ->
-      let%bind.Ui_effect () = sleep effect_time in
+      let%bind.Bonsai.Effect () = sleep effect_time in
       effect
   in
   let%tydi { state = is_active
