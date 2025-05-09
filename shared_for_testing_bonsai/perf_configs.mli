@@ -1,5 +1,5 @@
 open! Core
-open Bonsai_perf_shared
+open Bonsai_bench_scenario
 
 module Dynamic_num : sig
   type t =

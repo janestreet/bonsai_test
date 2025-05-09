@@ -28,7 +28,7 @@ let computation graph =
       (module String)
       queries
       ~f:(fun _key data graph ->
-        let r = Bonsai.Memo.lookup ~equal:Int.equal memo data graph in
+        let r = Bonsai.Memo.lookup memo data graph in
         Bonsai.both data r)
       graph
   in
@@ -48,18 +48,31 @@ let computation graph =
         [%string "%{name}: %{input#Int} -> %{output}"])
       |> String.concat_lines
     in
-    let query_counts =
-      match Bonsai.Debug.memo_query_counts memo with
-      | [] -> "No polled queries"
-      | query_counts ->
+    let query_states =
+      match Bonsai.Debug.memo_subscribers memo with
+      | x when Map.is_empty x -> "No polled queries"
+      | subscribers ->
+        let per_query =
+          Map.fold
+            subscribers
+            ~init:(Map.empty (module Int))
+            ~f:(fun ~key:path ~data:query acc -> Map.add_multi acc ~key:query ~data:path)
+          |> Map.to_alist
+        in
         let s =
-          List.map query_counts ~f:(fun (key, count) ->
-            [%string "%{key#Int} (%{count#Int})"])
+          List.map per_query ~f:(fun (key, paths) ->
+            let paths_str =
+              paths
+              |> List.map ~f:Bonsai.Path.to_unique_identifier_string
+              |> List.map ~f:(String.chop_prefix_if_exists ~prefix:"bonsai_path_")
+              |> String.concat ~sep:", "
+            in
+            [%string "%{key#Int}: (%{paths_str})"])
           |> String.concat ~sep:"; "
         in
         "Polled Queries: " ^ s
     in
-    [%string "%{results}\n%{query_counts}"]
+    [%string "%{results}\n%{query_states}"]
   in
   Bonsai.both result_view inject
 ;;
@@ -80,7 +93,7 @@ module Result_spec = struct
   let incoming (_, inject) t = inject t
 end
 
-let%expect_test "BUG: If Memo reset, but not [lookup]s, [lookup]s are permanently broken" =
+let%expect_test "If Memo reset, but not [lookup]s [lookup]s recover after a frame" =
   let handle = Handle.create (module Result_spec) computation in
   Handle.do_actions handle [ `Set_queries [ "one", 1; "two", 2; "three", 3 ] ];
   Handle.show handle;
@@ -99,7 +112,7 @@ let%expect_test "BUG: If Memo reset, but not [lookup]s, [lookup]s are permanentl
     three: 3 -> -3
     two: 2 -> -2
 
-    Polled Queries: 1 (1); 2 (1); 3 (1)
+    Polled Queries: 1: (y_gpgogf_x); 2: (y_hehhgp_x); 3: (y_hegihcgfgf_x)
     |}];
   Handle.do_actions handle [ `Set_queries [ "one", 1; "two", 2; "one_dup", 1 ] ];
   Handle.show handle;
@@ -110,7 +123,7 @@ let%expect_test "BUG: If Memo reset, but not [lookup]s, [lookup]s are permanentl
     one_dup: 1 -> -1
     two: 2 -> -2
 
-    Polled Queries: 1 (1); 2 (1); 3 (1)
+    Polled Queries: 1: (y_gpgogf_x); 2: (y_hehhgp_x); 3: (y_hegihcgfgf_x)
     |}];
   Handle.show handle;
   [%expect
@@ -119,8 +132,9 @@ let%expect_test "BUG: If Memo reset, but not [lookup]s, [lookup]s are permanentl
     one_dup: 1 -> -1
     two: 2 -> -2
 
-    Polled Queries: 1 (2); 2 (1)
+    Polled Queries: 1: (y_gpgogffpgehfha_x, y_gpgogf_x); 2: (y_hehhgp_x)
     |}];
+  (* 3 is cleaned up after 2 frames. *)
   Handle.show handle;
   [%expect
     {|
@@ -128,7 +142,7 @@ let%expect_test "BUG: If Memo reset, but not [lookup]s, [lookup]s are permanentl
     one_dup: 1 -> -1
     two: 2 -> -2
 
-    Polled Queries: 1 (2); 2 (1)
+    Polled Queries: 1: (y_gpgogffpgehfha_x, y_gpgogf_x); 2: (y_hehhgp_x)
     |}];
   Handle.do_actions handle [ `Set_queries [ "one", 1; "two", 2; "three", 3 ] ];
   Handle.show handle;
@@ -138,8 +152,9 @@ let%expect_test "BUG: If Memo reset, but not [lookup]s, [lookup]s are permanentl
     three: 3 -> ?
     two: 2 -> -2
 
-    Polled Queries: 1 (2); 2 (1)
+    Polled Queries: 1: (y_gpgogffpgehfha_x, y_gpgogf_x); 2: (y_hehhgp_x)
     |}];
+  (* 1 is scheduled for removal, because "one_dup" went away... *)
   Handle.show handle;
   [%expect
     {|
@@ -147,8 +162,9 @@ let%expect_test "BUG: If Memo reset, but not [lookup]s, [lookup]s are permanentl
     three: 3 -> -3
     two: 2 -> -2
 
-    Polled Queries: 1 (1); 2 (1); 3 (1)
+    Polled Queries: 1: (y_gpgogf_x); 2: (y_hehhgp_x); 3: (y_hegihcgfgf_x)
     |}];
+  (* ... but "one" reaffirmed its presence, so it remains. *)
   Handle.show handle;
   [%expect
     {|
@@ -156,9 +172,10 @@ let%expect_test "BUG: If Memo reset, but not [lookup]s, [lookup]s are permanentl
     three: 3 -> -3
     two: 2 -> -2
 
-    Polled Queries: 1 (1); 2 (1); 3 (1)
+    Polled Queries: 1: (y_gpgogf_x); 2: (y_hehhgp_x); 3: (y_hegihcgfgf_x)
     |}];
   Handle.do_actions handle [ `Reset ];
+  (* It takes us a frame to start comuting state again... *)
   Handle.show handle;
   [%expect
     {|
@@ -168,19 +185,20 @@ let%expect_test "BUG: If Memo reset, but not [lookup]s, [lookup]s are permanentl
 
     No polled queries
     |}];
+  (* ... But eventually, we're good again! *)
   Handle.show handle;
   [%expect
     {|
-    one: 1 -> ?
-    three: 3 -> ?
-    two: 2 -> ?
+    one: 1 -> -1
+    three: 3 -> -3
+    two: 2 -> -2
 
-    No polled queries
+    Polled Queries: 1: (y_gpgogf_x); 2: (y_hehhgp_x); 3: (y_hegihcgfgf_x)
     |}]
 ;;
 
-let%expect_test "BUG: If Memo changed via scope model, but not [lookup]s, [lookup]s are \
-                 permanently broken"
+let%expect_test "If Memo changed via scope model, but not [lookup]s, [lookup]s recover \
+                 after a frame"
   =
   let handle = Handle.create (module Result_spec) computation in
   Handle.do_actions handle [ `Set_queries [ "one", 1; "two", 2; "three", 3 ] ];
@@ -200,7 +218,7 @@ let%expect_test "BUG: If Memo changed via scope model, but not [lookup]s, [looku
     three: 3 -> -3
     two: 2 -> -2
 
-    Polled Queries: 1 (1); 2 (1); 3 (1)
+    Polled Queries: 1: (y_gpgogf_x); 2: (y_hehhgp_x); 3: (y_hegihcgfgf_x)
     |}];
   Handle.show handle;
   [%expect
@@ -209,18 +227,19 @@ let%expect_test "BUG: If Memo changed via scope model, but not [lookup]s, [looku
     three: 3 -> -3
     two: 2 -> -2
 
-    Polled Queries: 1 (1); 2 (1); 3 (1)
+    Polled Queries: 1: (y_gpgogf_x); 2: (y_hehhgp_x); 3: (y_hegihcgfgf_x)
     |}];
   Handle.do_actions handle [ `Set_queries [ "one", 1; "two", 2; "one_dup", 1 ] ];
   Handle.show handle;
-  (* We don't need to do a round-trip, because we have a result for "1" cached. *)
+  (* We don't need to do a round-trip, because we have a result for "1" cached.
+     Our poller will stop polling for it one frame later. *)
   [%expect
     {|
     one: 1 -> -1
     one_dup: 1 -> -1
     two: 2 -> -2
 
-    Polled Queries: 1 (1); 2 (1); 3 (1)
+    Polled Queries: 1: (y_gpgogf_x); 2: (y_hehhgp_x); 3: (y_hegihcgfgf_x)
     |}];
   Handle.show handle;
   [%expect
@@ -229,8 +248,9 @@ let%expect_test "BUG: If Memo changed via scope model, but not [lookup]s, [looku
     one_dup: 1 -> -1
     two: 2 -> -2
 
-    Polled Queries: 1 (2); 2 (1)
+    Polled Queries: 1: (y_gpgogffpgehfha_x, y_gpgogf_x); 2: (y_hehhgp_x)
     |}];
+  (* 3 is cleaned up after 2 frames. *)
   Handle.show handle;
   [%expect
     {|
@@ -238,7 +258,7 @@ let%expect_test "BUG: If Memo changed via scope model, but not [lookup]s, [looku
     one_dup: 1 -> -1
     two: 2 -> -2
 
-    Polled Queries: 1 (2); 2 (1)
+    Polled Queries: 1: (y_gpgogffpgehfha_x, y_gpgogf_x); 2: (y_hehhgp_x)
     |}];
   Handle.do_actions handle [ `Set_queries [ "one", 1; "two", 2; "three", 3 ] ];
   Handle.show handle;
@@ -248,8 +268,9 @@ let%expect_test "BUG: If Memo changed via scope model, but not [lookup]s, [looku
     three: 3 -> ?
     two: 2 -> -2
 
-    Polled Queries: 1 (2); 2 (1)
+    Polled Queries: 1: (y_gpgogffpgehfha_x, y_gpgogf_x); 2: (y_hehhgp_x)
     |}];
+  (* 1 is scheduled for removal, because "one_dup" went away... *)
   Handle.show handle;
   [%expect
     {|
@@ -257,8 +278,9 @@ let%expect_test "BUG: If Memo changed via scope model, but not [lookup]s, [looku
     three: 3 -> -3
     two: 2 -> -2
 
-    Polled Queries: 1 (1); 2 (1); 3 (1)
+    Polled Queries: 1: (y_gpgogf_x); 2: (y_hehhgp_x); 3: (y_hegihcgfgf_x)
     |}];
+  (* ... but "one" reaffirmed its presence, so it remains. *)
   Handle.show handle;
   [%expect
     {|
@@ -266,7 +288,7 @@ let%expect_test "BUG: If Memo changed via scope model, but not [lookup]s, [looku
     three: 3 -> -3
     two: 2 -> -2
 
-    Polled Queries: 1 (1); 2 (1); 3 (1)
+    Polled Queries: 1: (y_gpgogf_x); 2: (y_hehhgp_x); 3: (y_hegihcgfgf_x)
     |}];
   Handle.do_actions handle [ `Scope_model 1 ];
   Handle.show handle;
@@ -278,14 +300,15 @@ let%expect_test "BUG: If Memo changed via scope model, but not [lookup]s, [looku
 
     No polled queries
     |}];
+  (* We start polling again after a frame. *)
   Handle.show handle;
   [%expect
     {|
-    one: 1 -> ?
-    three: 3 -> ?
-    two: 2 -> ?
+    one: 1 -> -1
+    three: 3 -> -3
+    two: 2 -> -2
 
-    No polled queries
+    Polled Queries: 1: (y_gpgogf_x); 2: (y_hehhgp_x); 3: (y_hegihcgfgf_x)
     |}];
   Handle.do_actions handle [ `Set_queries [ "two_dup", 2; "two", 2; "three", 3 ] ];
   (* Old state is still there! *)
@@ -293,11 +316,11 @@ let%expect_test "BUG: If Memo changed via scope model, but not [lookup]s, [looku
   Handle.show handle;
   [%expect
     {|
-    three: 3 -> -3
-    two: 2 -> -2
-    two_dup: 2 -> -2
+    three: 3 -> ?
+    two: 2 -> ?
+    two_dup: 2 -> ?
 
-    Polled Queries: 1 (1); 2 (1); 3 (1)
+    No polled queries
     |}];
   Handle.show handle;
   ();
@@ -307,7 +330,7 @@ let%expect_test "BUG: If Memo changed via scope model, but not [lookup]s, [looku
     two: 2 -> -2
     two_dup: 2 -> -2
 
-    Polled Queries: 1 (1); 2 (2); 3 (1)
+    Polled Queries: 2: (y_hehhgpfpgehfha_x, y_hehhgp_x); 3: (y_hegihcgfgf_x)
     |}];
   ()
 ;;

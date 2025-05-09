@@ -1,5 +1,5 @@
 open! Core
-open Bonsai_perf_shared
+open Bonsai_bench_scenario
 
 module Mini_profile = struct
   let pending = Hashtbl.create (module String)
@@ -39,7 +39,17 @@ module Incr_report = struct
     }
   [@@deriving sexp_of]
 
-  let measure f =
+  module Start_measurement = struct
+    type t =
+      { nodes_created_before : int
+      ; nodes_recomputed_before : int
+      ; nodes_invalidated_before : int
+      ; annotated_before : Bonsai.Private.Annotate_incr.Counts.t
+      }
+    [@@deriving sexp_of]
+  end
+
+  let start_measure () =
     let nodes_created_before = Incremental.State.num_nodes_created Ui_incr.State.t in
     let nodes_recomputed_before =
       Incremental.State.num_nodes_recomputed Ui_incr.State.t
@@ -49,7 +59,20 @@ module Incr_report = struct
     in
     let annotated_before = Bonsai.Private.Annotate_incr.Counts.current () in
     Mini_profile.start ~label:"run f";
-    let r = f () in
+    { Start_measurement.nodes_created_before
+    ; nodes_recomputed_before
+    ; nodes_invalidated_before
+    ; annotated_before
+    }
+  ;;
+
+  let finish_measure
+    { Start_measurement.nodes_created_before
+    ; nodes_recomputed_before
+    ; nodes_invalidated_before
+    ; annotated_before
+    }
+    =
     Mini_profile.stop ~label:"run f";
     let nodes_created_after = Incremental.State.num_nodes_created Ui_incr.State.t in
     let nodes_recomputed_after = Incremental.State.num_nodes_recomputed Ui_incr.State.t in
@@ -86,17 +109,21 @@ module Incr_report = struct
       |> Option.value_exn
     in
     Mini_profile.stop ~label:"max node id";
-    let report =
-      { node_count
-      ; nodes_created
-      ; nodes_recomputed
-      ; nodes_invalidated
-      ; max_height
-      ; max_node_id
-      ; annotated_counts_diff = annotated_counts
-      }
-    in
-    r, report
+    { node_count
+    ; nodes_created
+    ; nodes_recomputed
+    ; nodes_invalidated
+    ; max_height
+    ; max_node_id
+    ; annotated_counts_diff = annotated_counts
+    }
+  ;;
+
+  let measure f =
+    let start_measurement = start_measure () in
+    let result = f () in
+    let report = finish_measure start_measurement in
+    result, report
   ;;
 end
 

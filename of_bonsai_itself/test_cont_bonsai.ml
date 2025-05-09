@@ -10906,7 +10906,7 @@ module%test State_vs_state_prime = struct
 
     type incoming = Do_the_effect
 
-    let view t = {%string|%{t.result#Int}|}
+    let view t = {%string.global|%{t.result#Int}|}
     let incoming { result = _; the_effect } Do_the_effect = the_effect
   end
 

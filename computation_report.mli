@@ -1,5 +1,5 @@
 open! Core
-open Bonsai_perf_shared
+open Bonsai_bench_scenario
 
 module Incr_report : sig
   type t =
@@ -13,7 +13,21 @@ module Incr_report : sig
     }
   [@@deriving sexp_of]
 
+  (** [measure f] will compute the "incr" count report of the incremental nodes created
+      during the execution of [f]. If you would like to time an async function/you can use
+      a combination of [start_measure] and [finish_measure]. *)
   val measure : (unit -> 'a) -> 'a * t
+
+  module Start_measurement : sig
+    type t [@@deriving sexp_of]
+  end
+
+  (** [start_measure] will record the "current" state of incremental node counts. *)
+  val start_measure : unit -> Start_measurement.t
+
+  (** [finish_measure start_measurement] will compare the "current" state of incremental
+      node counts with the counts when [start_measurement] was take and create a report. *)
+  val finish_measure : Start_measurement.t -> t
 end
 
 module Startup : sig

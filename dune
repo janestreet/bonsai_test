@@ -1,7 +1,7 @@
 (library
  (name bonsai_test)
  (public_name bonsai_test)
- (libraries bonsai bonsai.driver bonsai.perf_shared
+ (libraries bonsai bonsai.bench_scenario bonsai.driver
    async_js.test_handle_garbage_collector base.composition_infix core
    ppx_expect.config_types expect_test_helpers_core.expect_test_helpers_base
    expect_test_helpers_core patdiff.expect_test_patdiff expectable
