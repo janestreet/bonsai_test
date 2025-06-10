@@ -119,24 +119,22 @@ struct
   let%expect_test "within [match%sub]" =
     bisimulate_default_and_inverted ~f:(fun build ~print_lifecycles ~expect_diff ->
       let handle =
-        Handle.create
-          (module Bool_action_no_view)
-          (fun (local_ graph) ->
-            let active, set_active = Bonsai.state false graph in
-            let (_ : unit Bonsai.t) =
-              match%sub active with
-              | false -> return ()
-              | true ->
-                build
-                  ~compute_dep:(fun graph ->
-                    print_lifecycles "a" graph;
-                    return ())
-                  ~f:(fun r graph ->
-                    print_lifecycles "b" graph;
-                    r)
-                  graph
-            in
-            set_active)
+        Handle.create (module Bool_action_no_view) (fun (local_ graph) ->
+          let active, set_active = Bonsai.state false graph in
+          let (_ : unit Bonsai.t) =
+            match%sub active with
+            | false -> return ()
+            | true ->
+              build
+                ~compute_dep:(fun graph ->
+                  print_lifecycles "a" graph;
+                  return ())
+                ~f:(fun r graph ->
+                  print_lifecycles "b" graph;
+                  r)
+                graph
+          in
+          set_active)
       in
       Handle.recompute_view handle;
       expect_diff
@@ -185,27 +183,25 @@ struct
   let%expect_test "[match%sub] within" =
     bisimulate_default_and_inverted ~f:(fun build ~print_lifecycles ~expect_diff ->
       let handle =
-        Handle.create
-          (module Bool_action_no_view)
-          (fun (local_ graph) ->
-            let active, set_active = Bonsai.state false graph in
-            let (_ : unit Bonsai.t) =
-              build
-                ~compute_dep:(fun graph ->
-                  match%sub active with
-                  | false -> active
-                  | true ->
-                    print_lifecycles "a" graph;
-                    active)
-                ~f:(fun active graph ->
-                  match%sub active with
-                  | false -> return ()
-                  | true ->
-                    print_lifecycles "b" graph;
-                    return ())
-                graph
-            in
-            set_active)
+        Handle.create (module Bool_action_no_view) (fun (local_ graph) ->
+          let active, set_active = Bonsai.state false graph in
+          let (_ : unit Bonsai.t) =
+            build
+              ~compute_dep:(fun graph ->
+                match%sub active with
+                | false -> active
+                | true ->
+                  print_lifecycles "a" graph;
+                  active)
+              ~f:(fun active graph ->
+                match%sub active with
+                | false -> return ()
+                | true ->
+                  print_lifecycles "b" graph;
+                  return ())
+              graph
+          in
+          set_active)
       in
       Handle.recompute_view handle;
       expect_diff

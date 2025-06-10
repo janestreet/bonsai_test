@@ -237,13 +237,10 @@ let%expect_test "Switch/Lazy" =
 let%expect_test "Assoc" =
   let input = Bonsai.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
   let component =
-    Bonsai.assoc
-      (module Int)
-      (Bonsai.Var.value input)
-      ~f:(fun _ _ ->
-        let%sub _, inject = no_op_sm0 in
-        let%arr inject in
-        inject ())
+    Bonsai.assoc (module Int) (Bonsai.Var.value input) ~f:(fun _ _ ->
+      let%sub _, inject = no_op_sm0 in
+      let%arr inject in
+      inject ())
   in
   let module Action = struct
     type t = Entry of int [@@deriving sexp_of]

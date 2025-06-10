@@ -12,11 +12,9 @@ let computation graph =
            (module Int)
            ~on:scoper
            ~for_:
-             (Bonsai.Memo.create
-                (module Int)
-                ~f:(fun input _ ->
-                  let%arr input in
-                  input * -1)))
+             (Bonsai.Memo.create (module Int) ~f:(fun input _ ->
+                let%arr input in
+                input * -1)))
       graph
   in
   let queries =

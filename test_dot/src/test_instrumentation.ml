@@ -689,14 +689,11 @@ let%expect_test "nested values" =
 
 let enum ?(a = Value.return 0) ?(match_ = Value.return true) () =
   test_start [%here];
-  Bonsai.enum
-    (module Bool)
-    ~match_
-    ~with_:(function
-      | true ->
-        let%arr a in
-        a > 0
-      | false -> return match_)
+  Bonsai.enum (module Bool) ~match_ ~with_:(function
+    | true ->
+      let%arr a in
+      a > 0
+    | false -> return match_)
 ;;
 
 let%expect_test "enum" =
@@ -776,12 +773,9 @@ let%expect_test "enum" =
 let lazy_computation ?(match_ = Value.return true) () =
   test_start [%here];
   let a = Bonsai.Value.return 0 in
-  Bonsai.enum
-    (module Bool)
-    ~match_
-    ~with_:(function
-      | true -> return a
-      | false -> (Bonsai.lazy_ [@alert "-deprecated"]) (lazy (return a)))
+  Bonsai.enum (module Bool) ~match_ ~with_:(function
+    | true -> return a
+    | false -> (Bonsai.lazy_ [@alert "-deprecated"]) (lazy (return a)))
 ;;
 
 let%expect_test "lazy" =
