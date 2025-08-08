@@ -689,14 +689,11 @@ let%expect_test "nested values" =
 
 let enum ?(a = Value.return 0) ?(match_ = Value.return true) () =
   test_start [%here];
-  Bonsai.enum
-    (module Bool)
-    ~match_
-    ~with_:(function
-      | true ->
-        let%arr a in
-        a > 0
-      | false -> return match_)
+  Bonsai.enum (module Bool) ~match_ ~with_:(function
+    | true ->
+      let%arr a in
+      a > 0
+    | false -> return match_)
 ;;
 
 let%expect_test "enum" =
@@ -776,12 +773,9 @@ let%expect_test "enum" =
 let lazy_computation ?(match_ = Value.return true) () =
   test_start [%here];
   let a = Bonsai.Value.return 0 in
-  Bonsai.enum
-    (module Bool)
-    ~match_
-    ~with_:(function
-      | true -> return a
-      | false -> (Bonsai.lazy_ [@alert "-deprecated"]) (lazy (return a)))
+  Bonsai.enum (module Bool) ~match_ ~with_:(function
+    | true -> return a
+    | false -> (Bonsai.lazy_ [@alert "-deprecated"]) (lazy (return a)))
 ;;
 
 let%expect_test "lazy" =
@@ -1002,6 +996,8 @@ let%expect_test "name_used_twice" =
 
 type packed = T : (unit -> 'a Computation.t) -> packed
 
+let dot_exe = "dot"
+
 open Async
 
 let command =
@@ -1032,7 +1028,7 @@ let command =
            |> Deferred.List.iter ~how:`Sequential ~f:(fun (name, T computation) ->
              print_endline [%string "Processing %{name}"];
              write_computation_to_dot [%string "%{name}.dot"] (computation ());
-             Sys_unix.command_exn [%string "dot -Tsvg %{name}.dot -o %{name}.svg"];
+             Sys_unix.command_exn [%string "%{dot_exe} -Tsvg %{name}.dot -o %{name}.svg"];
              let%bind () = Sys.remove [%string "%{name}.dot"] in
              Writer.write
                writer
@@ -1064,7 +1060,7 @@ let command =
              Handle.recompute_view handle;
              graph_info_to_dot filename !graph_info
            in
-           Sys_unix.command_exn [%string "dot -Tsvg %{name}.dot -o %{name}.svg"];
+           Sys_unix.command_exn [%string "%{dot_exe} -Tsvg %{name}.dot -o %{name}.svg"];
            let%bind () = Sys.remove [%string "%{name}.dot"] in
            Writer.write
              writer

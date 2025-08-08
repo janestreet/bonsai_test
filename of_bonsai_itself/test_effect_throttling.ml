@@ -246,15 +246,10 @@ let%expect_test {| Effect_throttling.poll in an assoc |} =
   let effect_var = Bonsai.Var.create (Effect.For_testing.of_query_response_tracker qrt) in
   let component =
     let open Bonsai.Let_syntax in
-    Bonsai.assoc
-      (module Int)
-      (Bonsai.Var.value map_var)
-      ~f:(fun key _data ->
-        let%sub poll_effect =
-          Bonsai.Effect_throttling.poll (Bonsai.Var.value effect_var)
-        in
-        let%arr key and poll_effect in
-        poll_effect key)
+    Bonsai.assoc (module Int) (Bonsai.Var.value map_var) ~f:(fun key _data ->
+      let%sub poll_effect = Bonsai.Effect_throttling.poll (Bonsai.Var.value effect_var) in
+      let%arr key and poll_effect in
+      poll_effect key)
   in
   let handle =
     Handle.create

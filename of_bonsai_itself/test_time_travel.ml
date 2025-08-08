@@ -206,14 +206,12 @@ let%expect_test "get_current_time - behaves correctly" =
   end
   in
   let handle =
-    Handle.create
-      (module Spec)
-      (fun graph ->
-        let get_current_time = Bonsai.Clock.get_current_time graph in
-        let open Bonsai.Let_syntax in
-        let%arr get_current_time in
-        let%bind.Ui_effect current_time = get_current_time in
-        Ui_effect.print_s [%message (current_time : Time_ns.Alternate_sexp.t)])
+    Handle.create (module Spec) (fun graph ->
+      let get_current_time = Bonsai.Clock.get_current_time graph in
+      let open Bonsai.Let_syntax in
+      let%arr get_current_time in
+      let%bind.Ui_effect current_time = get_current_time in
+      Ui_effect.print_s [%message (current_time : Time_ns.Alternate_sexp.t)])
   in
   let go n =
     Handle.advance_clock handle ~to_:(seconds n);
@@ -245,3 +243,56 @@ let%expect_test "get_current_time - behaves correctly" =
   go 3;
   [%expect {| (current_time "1970-01-01 00:00:03Z") |}]
 ;;
+
+module%test Overflow = struct
+  let days n = Time_ns.of_span_since_epoch (Time_ns.Span.of_int_day n)
+
+  let simmulate_all_when_to_start_next_effect ~f =
+    f `Every_multiple_of_period_blocking;
+    f `Every_multiple_of_period_non_blocking;
+    f `Wait_period_after_previous_effect_finishes_blocking;
+    f `Wait_period_after_previous_effect_starts_blocking
+  ;;
+
+  let tick_every_max_value ~when_to_start_next_effect graph =
+    let () =
+      Bonsai.Clock.every
+        ~when_to_start_next_effect
+        ~trigger_on_activate:true
+        (Bonsai.return Time_ns.Span.max_value_representable)
+        (Bonsai.return (Ui_effect.print_s [%message "ticked!"]))
+        graph
+    in
+    Bonsai.return ()
+  ;;
+
+  let%expect_test "every w/ max_value - showing that we don't overflow when doing the \
+                   initial on_activate logic"
+    =
+    simmulate_all_when_to_start_next_effect ~f:(fun when_to_start_next_effect ->
+      let handle =
+        Handle.create
+          (Result_spec.sexp (module Unit))
+          (tick_every_max_value ~when_to_start_next_effect)
+      in
+      Handle.recompute_view handle;
+      let go n =
+        Handle.advance_clock handle ~to_:(days n);
+        Handle.recompute_view handle
+      in
+      go 1;
+      [%expect {| ticked! |}];
+      go 2;
+      [%expect {| |}];
+      go 3;
+      [%expect {| |}];
+      go 4;
+      [%expect {| |}];
+      go 5;
+      [%expect {| |}];
+      go 1000000;
+      [%expect {| |}];
+      go 1000001;
+      [%expect {| |}])
+  ;;
+end

@@ -195,15 +195,27 @@ let%expect_test {| One_at_a_time.effect releases lock after effect throws except
   Handle.show handle;
   [%expect {| Idle |}];
   Handle.do_actions handle [ 0 ];
-  Expect_test_helpers_core.require_does_raise (fun () -> Handle.show handle);
-  [%expect {| (Failure "error while computing effect") |}];
+  Handle.show handle;
+  [%expect
+    {|
+    (result (Exn (Failure "error while computing effect")))
+    Idle
+    |}];
   Handle.show handle;
   [%expect {| Idle |}];
   Handle.do_actions handle [ 1 ];
   Handle.show handle;
   [%expect {| Busy |}];
-  Expect_test_helpers_core.require_does_raise (fun () -> complete ());
-  [%expect {| (Failure "error while running effect") |}];
+  Expect_test_helpers_core.require_does_not_raise (fun () -> complete ());
+  [%expect {| |}];
   Handle.show handle;
-  [%expect {| Busy |}]
+  [%expect
+    {|
+    (result (Exn (Failure "error while running effect")))
+    Idle
+    |}];
+  Handle.show handle;
+  [%expect {| Idle |}];
+  Handle.show handle;
+  [%expect {| Idle |}]
 ;;

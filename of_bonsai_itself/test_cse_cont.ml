@@ -44,7 +44,7 @@ let%expect_test "double-use of a Value.t" =
     {|
     (Sub
       (from (Return (value (Mapn (inputs (Incr))))))
-      (via (Test 2))
+      (via (Test 0))
       (into (
         Sub
         (from (
@@ -52,10 +52,10 @@ let%expect_test "double-use of a Value.t" =
             value (
               Mapn (
                 inputs (
-                  (Named (uid (Test 2)))
-                  (Named (uid (Test 2)))))))))
-        (via (Test 4))
-        (into (Return (value (Mapn (inputs ((Named (uid (Test 4))))))))))))
+                  (Named (uid (Test 0)))
+                  (Named (uid (Test 0)))))))))
+        (via (Test 1))
+        (into (Return (value (Mapn (inputs ((Named (uid (Test 1))))))))))))
     computing!
     |}]
 ;;
@@ -75,27 +75,27 @@ let%expect_test "double-use spanning match%sub with value previously computed" =
     {|
     (Sub
       (from (Return (value (Mapn (inputs (Incr))))))
-      (via (Test 2))
+      (via (Test 0))
       (into (
         Sub
         (from (Return (value (Mapn (inputs (Incr))))))
-        (via (Test 5))
+        (via (Test 1))
         (into (
           Sub
           (from (
             Switch
-            (match_ (Named (uid (Test 5))))
+            (match_ (Named (uid (Test 1))))
             (arms (
-              (Return (value (Named (uid (Test 2)))))
-              (Return (value (Named (uid (Test 2)))))))))
-          (via (Test 6))
+              (Return (value (Named (uid (Test 0)))))
+              (Return (value (Named (uid (Test 0)))))))))
+          (via (Test 2))
           (into (
             Return (
               value (
                 Mapn (
                   inputs (
-                    (Named (uid (Test 2)))
-                    (Named (uid (Test 6))))))))))))))
+                    (Named (uid (Test 0)))
+                    (Named (uid (Test 2))))))))))))))
     computing!
     |}]
 ;;
@@ -116,27 +116,27 @@ let%expect_test "double-use with first use inside scope" =
     {|
     (Sub
       (from (Return (value (Mapn (inputs (Incr))))))
-      (via (Test 2))
+      (via (Test 0))
       (into (
         Sub
         (from (Return (value (Mapn (inputs (Incr))))))
-        (via (Test 5))
+        (via (Test 1))
         (into (
           Sub
           (from (
             Switch
-            (match_ (Named (uid (Test 5))))
+            (match_ (Named (uid (Test 1))))
             (arms (
-              (Return (value (Named (uid (Test 2)))))
-              (Return (value (Named (uid (Test 2)))))))))
-          (via (Test 6))
+              (Return (value (Named (uid (Test 0)))))
+              (Return (value (Named (uid (Test 0)))))))))
+          (via (Test 2))
           (into (
             Return (
               value (
                 Mapn (
                   inputs (
-                    (Named (uid (Test 6)))
-                    (Named (uid (Test 2))))))))))))))
+                    (Named (uid (Test 2)))
+                    (Named (uid (Test 0))))))))))))))
     computing!
     |}]
 ;;
@@ -154,14 +154,14 @@ let%expect_test "double-use inside of some subs" =
     {|
     (Sub
       (from (Return (value (Mapn (inputs (Incr))))))
-      (via (Test 2))
+      (via (Test 0))
       (into (
         Return (
           value (
             Mapn (
               inputs (
-                (Named (uid (Test 2)))
-                (Named (uid (Test 2))))))))))
+                (Named (uid (Test 0)))
+                (Named (uid (Test 0))))))))))
     computing!
     |}]
 ;;
@@ -184,30 +184,30 @@ let%expect_test "double-use inside of some nested subs" =
     {|
     (Sub
       (from (Return (value (Mapn (inputs (Incr))))))
-      (via (Test 2))
+      (via (Test 0))
       (into (
         Sub
-        (from (Return (value (Mapn (inputs (Incr (Named (uid (Test 2)))))))))
-        (via (Test 5))
+        (from (Return (value (Mapn (inputs (Incr (Named (uid (Test 0)))))))))
+        (via (Test 1))
         (into (
           Sub
-          (from (Return (value (Mapn (inputs ((Named (uid (Test 5)))))))))
-          (via (Test 7))
+          (from (Return (value (Mapn (inputs ((Named (uid (Test 1)))))))))
+          (via (Test 2))
           (into (
             Sub
-            (from (Return (value (Mapn (inputs (Incr (Named (uid (Test 2)))))))))
-            (via (Test 10))
+            (from (Return (value (Mapn (inputs (Incr (Named (uid (Test 0)))))))))
+            (via (Test 3))
             (into (
               Sub
-              (from (Return (value (Mapn (inputs ((Named (uid (Test 10)))))))))
-              (via (Test 12))
+              (from (Return (value (Mapn (inputs ((Named (uid (Test 3)))))))))
+              (via (Test 4))
               (into (
                 Return (
                   value (
                     Mapn (
                       inputs (
-                        (Named (uid (Test 7)))
-                        (Named (uid (Test 12))))))))))))))))))
+                        (Named (uid (Test 2)))
+                        (Named (uid (Test 4))))))))))))))))))
     computing!
     |}]
 ;;
@@ -230,30 +230,30 @@ let%expect_test "double-use inside supercomponent" =
     {|
     (Sub
       (from (Return (value (Mapn (inputs (Incr))))))
-      (via (Test 2))
+      (via (Test 0))
       (into (
         Sub
-        (from (Return (value (Mapn (inputs (Incr (Named (uid (Test 2)))))))))
-        (via (Test 5))
+        (from (Return (value (Mapn (inputs (Incr (Named (uid (Test 0)))))))))
+        (via (Test 1))
         (into (
           Sub
-          (from (Return (value (Mapn (inputs ((Named (uid (Test 5)))))))))
-          (via (Test 7))
+          (from (Return (value (Mapn (inputs ((Named (uid (Test 1)))))))))
+          (via (Test 2))
           (into (
             Sub
-            (from (Return (value (Mapn (inputs (Incr (Named (uid (Test 2)))))))))
-            (via (Test 9))
+            (from (Return (value (Mapn (inputs (Incr (Named (uid (Test 0)))))))))
+            (via (Test 3))
             (into (
               Sub
-              (from (Return (value (Mapn (inputs ((Named (uid (Test 9)))))))))
-              (via (Test 11))
+              (from (Return (value (Mapn (inputs ((Named (uid (Test 3)))))))))
+              (via (Test 4))
               (into (
                 Return (
                   value (
                     Mapn (
                       inputs (
-                        (Named (uid (Test 7)))
-                        (Named (uid (Test 11))))))))))))))))))
+                        (Named (uid (Test 2)))
+                        (Named (uid (Test 4))))))))))))))))))
     computing!
     more computing
     more computing

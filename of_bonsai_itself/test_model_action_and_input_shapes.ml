@@ -200,8 +200,8 @@ module%test [@name "model_resetter"] _ = struct
       ("without optimizations"
         (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
         (incr_graph (
-          (nodes 10)
-          (edges 13))))
+          (nodes 12)
+          (edges 16))))
 
       ("with optimizations"
         (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
@@ -280,10 +280,8 @@ end
 module%test [@name "assoc"] _ = struct
   let%expect_test "constant inside assoc" =
     print
-      (Bonsai.assoc
-         (module Int)
-         (opaque_const_value Int.Map.empty)
-         ~f:(fun _ _ -> constant_computation));
+      (Bonsai.assoc (module Int) (opaque_const_value Int.Map.empty) ~f:(fun _ _ ->
+         constant_computation));
     [%expect
       {|
       ("without optimizations"
@@ -305,10 +303,8 @@ module%test [@name "assoc"] _ = struct
 
   let%expect_test "static state inside assoc" =
     print
-      (Bonsai.assoc
-         (module Int)
-         (opaque_const_value Int.Map.empty)
-         ~f:(fun _ _ -> stateful_static_computation));
+      (Bonsai.assoc (module Int) (opaque_const_value Int.Map.empty) ~f:(fun _ _ ->
+         stateful_static_computation));
     [%expect
       {|
       ("with and without optimizations"
@@ -328,10 +324,8 @@ module%test [@name "assoc"] _ = struct
 
   let%expect_test "dynamic_state inside assoc" =
     print
-      (Bonsai.assoc
-         (module Int)
-         (opaque_const_value Int.Map.empty)
-         ~f:(fun _ _ -> stateful_dynamic_computation));
+      (Bonsai.assoc (module Int) (opaque_const_value Int.Map.empty) ~f:(fun _ _ ->
+         stateful_dynamic_computation));
     [%expect
       {|
       ("with and without optimizations"

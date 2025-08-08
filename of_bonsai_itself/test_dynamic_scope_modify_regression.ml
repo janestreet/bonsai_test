@@ -45,11 +45,11 @@ module%test [@name "Cont"] _ = struct
         (into (
           Sub
           (from (Return (value (Mapn (inputs ((Named (uid (Test 1)))))))))
-          (via (Test 3))
+          (via (Test 2))
           (into (
             Store
             (id (Test 0))
-            (value (Named (uid (Test 3))))
+            (value (Named (uid (Test 2))))
             (inner (Fetch (id (Test 0)))))))))
       |}]
   ;;
@@ -89,15 +89,15 @@ module%test [@name "Cont"] _ = struct
         (into (
           Sub
           (from (Return (value (Mapn (inputs ((Named (uid (Test 1)))))))))
-          (via (Test 3))
+          (via (Test 2))
           (into (
             Store
             (id (Test 0))
-            (value (Named (uid (Test 3))))
+            (value (Named (uid (Test 2))))
             (inner (
               Sub
               (from (Fetch (id (Test 0))))
-              (via (Test 4))
+              (via (Test 3))
               (into (
                 Sub
                 (from (
@@ -105,14 +105,14 @@ module%test [@name "Cont"] _ = struct
                   (id (Test 0))
                   (value (Named (uid (Test 1))))
                   (inner (Fetch (id (Test 0))))))
-                (via (Test 5))
+                (via (Test 4))
                 (into (
                   Return (
                     value (
                       Mapn (
                         inputs (
-                          (Named (uid (Test 4)))
-                          (Named (uid (Test 5))))))))))))))))))
+                          (Named (uid (Test 3)))
+                          (Named (uid (Test 4))))))))))))))))))
       |}]
   ;;
 end
@@ -192,7 +192,7 @@ module%test [@name "Proc"] _ = struct
           (inner (
             Sub
             (from (Fetch (id (Test 0))))
-            (via (Test 3))
+            (via (Test 2))
             (into (
               Sub
               (from (
@@ -200,14 +200,14 @@ module%test [@name "Proc"] _ = struct
                 (id (Test 0))
                 (value (Named (uid (Test 1))))
                 (inner (Fetch (id (Test 0))))))
-              (via (Test 4))
+              (via (Test 3))
               (into (
                 Return (
                   value (
                     Mapn (
                       inputs (
-                        (Named (uid (Test 3)))
-                        (Named (uid (Test 4))))))))))))))))
+                        (Named (uid (Test 2)))
+                        (Named (uid (Test 3))))))))))))))))
       |}]
   ;;
 end

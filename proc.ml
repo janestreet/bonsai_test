@@ -312,4 +312,12 @@ module Handle = struct
   let print_stabilizations = Driver.print_stabilizations
   let print_stabilization_tracker_stats = Driver.print_stabilization_tracker_stats
   let has_after_display_events = Driver.has_after_display_events
+
+  let print_computation_structure t =
+    Driver.Private.running_computation t
+    |> Bonsai.Private.Skeleton.Computation.of_computation
+    |> Bonsai.Private.Skeleton.Computation.sanitize_for_testing
+    |> Bonsai.Private.Skeleton.Computation.minimal_sexp_of_t
+    |> print_s
+  ;;
 end

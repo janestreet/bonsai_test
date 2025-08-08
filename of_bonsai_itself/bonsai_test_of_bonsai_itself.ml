@@ -1,6 +1,7 @@
 module Import = Import
 module Path_test = Path_test
 module Test_action_stabilization = Test_action_stabilization
+module Test_actor_functor = Test_actor_functor
 module Test_clock_remind_function = Test_clock_remind_function
 module Test_constant_fold = Test_constant_fold
 module Test_cont_bonsai = Test_cont_bonsai
@@ -18,7 +19,6 @@ module Test_mirror = Test_mirror
 module Test_model_action_and_input_shapes = Test_model_action_and_input_shapes
 module Test_multiple_schedule_events = Test_multiple_schedule_events
 module Test_one_at_a_time = Test_one_at_a_time
-module Test_parallel_effects = Test_parallel_effects
 module Test_proc_bonsai = Test_proc_bonsai
 module Test_proc_store_named_in_a_ref = Test_proc_store_named_in_a_ref
 module Test_time_travel = Test_time_travel

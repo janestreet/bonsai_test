@@ -94,9 +94,8 @@ module%test Instant_effect_tests = struct
     bisimulate
     @@ fun when_to_start_next_effect ->
     let handle =
-      Handle.create
-        (module Spec)
-        (fun graph -> component ~when_to_start_next_effect graph)
+      Handle.create (module Spec) (fun graph ->
+        component ~when_to_start_next_effect graph)
     in
     (* NOTE: The "tick" takes two [Handle.show]s. *)
     Handle.show handle;
@@ -121,9 +120,8 @@ module%test Instant_effect_tests = struct
     bisimulate
     @@ fun when_to_start_next_effect ->
     let handle =
-      Handle.create
-        (module Spec)
-        (fun graph -> component ~when_to_start_next_effect graph)
+      Handle.create (module Spec) (fun graph ->
+        component ~when_to_start_next_effect graph)
     in
     let show () =
       Handle.recompute_view handle;
@@ -165,10 +163,8 @@ module%test Instant_effect_tests = struct
     bisimulate
     @@ fun when_to_start_next_effect ->
     let handle =
-      Handle.create
-        (module Spec)
-        (fun graph ->
-          component ~trigger_on_activate:false ~when_to_start_next_effect graph)
+      Handle.create (module Spec) (fun graph ->
+        component ~trigger_on_activate:false ~when_to_start_next_effect graph)
     in
     Handle.recompute_view handle;
     let current = Time_ns.Span.of_sec 1.0 in
@@ -202,10 +198,8 @@ module%test Instant_effect_tests = struct
     bisimulate
     @@ fun when_to_start_next_effect ->
     let handle =
-      Handle.create
-        (module Spec)
-        (fun graph ->
-          component ~trigger_on_activate:false ~when_to_start_next_effect graph)
+      Handle.create (module Spec) (fun graph ->
+        component ~trigger_on_activate:false ~when_to_start_next_effect graph)
     in
     Handle.do_actions handle [ Set_every span ];
     Handle.recompute_view handle;
@@ -260,9 +254,8 @@ module%test Effect_that_takes_time = struct
     bisimulate
     @@ fun when_to_start_next_effect ->
     let handle =
-      Handle.create
-        (module Spec)
-        (fun graph -> component ~when_to_start_next_effect graph)
+      Handle.create (module Spec) (fun graph ->
+        component ~when_to_start_next_effect graph)
     in
     Handle.do_actions handle [ Set_effect_time (Some (Time_ns.Span.of_sec 1.0)) ];
     Handle.show handle;
@@ -285,9 +278,8 @@ module%test Effect_that_takes_time = struct
     bisimulate
     @@ fun when_to_start_next_effect ->
     let handle =
-      Handle.create
-        (module Spec)
-        (fun graph -> component ~when_to_start_next_effect graph)
+      Handle.create (module Spec) (fun graph ->
+        component ~when_to_start_next_effect graph)
     in
     Handle.do_actions handle [ Set_effect_time (Some (Time_ns.Span.of_sec 1.0)) ];
     let show () =
@@ -402,9 +394,8 @@ module%test Quickcheck = struct
     bisimulate
     @@ fun when_to_start_next_effect ->
     let handle =
-      Handle.create
-        (module Spec)
-        (fun graph -> component ~when_to_start_next_effect graph)
+      Handle.create (module Spec) (fun graph ->
+        component ~when_to_start_next_effect graph)
     in
     List.iter actions ~f:(fun action -> Action.perform ~handle action);
     Handle.do_actions

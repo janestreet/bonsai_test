@@ -41,6 +41,130 @@ let%expect_test "cutoff" =
   [%expect {| 1 |}]
 ;;
 
+module%test Dynamic_cutoff = struct
+  type t =
+    { set_value : int -> unit
+    ; set_equal : (int -> int -> bool) -> unit
+    ; print : unit -> unit
+    }
+
+  let prepare_test ~initial_value =
+    let var = Bonsai.Expert.Var.create initial_value in
+    let equal_var = Bonsai.Expert.Var.create (fun a b -> a = b) in
+    let value = Bonsai.Expert.Var.value var in
+    let equal = Bonsai.Expert.Var.value equal_var in
+    let component graph = Bonsai_extra.dynamic_cutoff value ~equal graph in
+    let handle = Handle.create (Result_spec.string (module Int)) component in
+    { set_value = Bonsai.Expert.Var.set var
+    ; set_equal = Bonsai.Expert.Var.set equal_var
+    ; print = (fun () -> Handle.show handle)
+    }
+  ;;
+
+  let%expect_test "non-changing equality function" =
+    let { set_value; print; set_equal = _ } = prepare_test ~initial_value:0 in
+    print ();
+    [%expect {| 0 |}];
+    set_value 1;
+    print ();
+    [%expect {| 1 |}];
+    set_value 2;
+    print ();
+    [%expect {| 2 |}]
+  ;;
+
+  let%expect_test "equality function changes to cut off" =
+    List.iter
+      [ `set_value_and_equal_on_same_frame; `set_value_first; `set_equal_first ]
+      ~f:(fun behavior ->
+        let { set_value; print; set_equal } = prepare_test ~initial_value:0 in
+        print ();
+        [%expect {| 0 |}];
+        set_value 1;
+        print ();
+        [%expect {| 1 |}];
+        set_value 2;
+        print ();
+        [%expect {| 2 |}];
+        let new_equal_function a b = Int.abs (a - b) <= 1 in
+        (match behavior with
+         | `set_value_and_equal_on_same_frame ->
+           set_value 3;
+           set_equal new_equal_function;
+           print ();
+           print () (* print twice so that it matches with [`set_equal_first]*)
+         | `set_value_first ->
+           set_value 3;
+           print ();
+           set_equal new_equal_function;
+           print ()
+         | `set_equal_first ->
+           set_equal new_equal_function;
+           print ();
+           set_value 3;
+           print ());
+        match behavior with
+        | `set_value_and_equal_on_same_frame | `set_equal_first ->
+          [%expect
+            {|
+            2
+            2
+            |}]
+        | `set_value_first ->
+          [%expect
+            {|
+            3
+            3
+            |}])
+  ;;
+
+  let%expect_test "equality function changes to _not_ cut off" =
+    List.iter
+      [ `set_value_and_equal_on_same_frame; `set_value_first; `set_equal_first ]
+      ~f:(fun behavior ->
+        let { set_value; print; set_equal } = prepare_test ~initial_value:0 in
+        set_equal (fun a b -> Int.abs (a - b) <= 1);
+        print ();
+        [%expect {| 0 |}];
+        set_value 1;
+        print ();
+        [%expect {| 0 |}];
+        let new_equal_function = Int.equal in
+        (match behavior with
+         | `set_value_and_equal_on_same_frame ->
+           set_value (-1);
+           set_equal new_equal_function;
+           print ()
+         | `set_value_first ->
+           set_value (-1);
+           print ();
+           set_equal new_equal_function;
+           print ()
+         | `set_equal_first ->
+           set_equal new_equal_function;
+           print ();
+           set_value (-1);
+           print ());
+        (match behavior with
+         | `set_value_and_equal_on_same_frame -> [%expect {| -1 |}]
+         | `set_equal_first ->
+           [%expect
+             {|
+             1
+             -1
+             |}]
+         | `set_value_first ->
+           [%expect
+             {|
+             0
+             -1
+             |}]);
+        print ();
+        (* all agree on final value *)
+        [%expect {| -1 |}])
+  ;;
+end
+
 let%expect_test "debug on change" =
   let var = Bonsai.Expert.Var.create 0 in
   let value = Bonsai.Expert.Var.value var in
@@ -3093,10 +3217,10 @@ let%expect_test "What happens when cutoff nodes are nested?" =
             Cutoff
             (t                   Incr)
             (added_by_let_syntax false)))))
-      (via (Test 2))
+      (via (Test 0))
       (into (
         Return (
-          value (Cutoff (t (Named (uid (Test 2)))) (added_by_let_syntax false))))))
+          value (Cutoff (t (Named (uid (Test 0)))) (added_by_let_syntax false))))))
     |}];
   Handle.show handle;
   [%expect {| (0 0) |}];
@@ -3143,13 +3267,13 @@ let%expect_test "if%sub" =
     {|
     (Sub
       (from (Return (value (Mapn (inputs (Incr))))))
-      (via (Test 2))
+      (via (Test 0))
       (into (
         Switch
-        (match_ (Named (uid (Test 2))))
+        (match_ (Named (uid (Test 0))))
         (arms (
-          (Return (value (Constant (id (Test 3)))))
-          (Return (value (Constant (id (Test 4))))))))))
+          (Return (value Constant))
+          (Return (value Constant)))))))
     |}];
   let handle =
     Handle.create
@@ -3334,18 +3458,18 @@ let%expect_test "assoc and enum path " =
     {|
     (Assoc
       (map Incr)
-      (key_id  (Test 1))
-      (cmp_id  (Test 2))
-      (data_id (Test 3))
+      (key_id  (Test 0))
+      (cmp_id  (Test 1))
+      (data_id (Test 2))
       (by (
         Sub
-        (from (Return (value (Mapn (inputs ((Named (uid (Test 1)))))))))
-        (via (Test 5))
+        (from (Return (value (Mapn (inputs ((Named (uid (Test 0)))))))))
+        (via (Test 3))
         (into (
           Sub
-          (from (Return (value (Mapn (inputs ((Named (uid (Test 5)))))))))
-          (via (Test 7))
-          (into (Switch (match_ (Named (uid (Test 7)))) (arms (Path Path)))))))))
+          (from (Return (value (Mapn (inputs ((Named (uid (Test 3)))))))))
+          (via (Test 4))
+          (into (Switch (match_ (Named (uid (Test 4)))) (arms (Path Path)))))))))
     |}];
   let handle =
     Handle.create
@@ -3522,7 +3646,7 @@ let%expect_test "assoc_on" =
   let result = Handle.last_result handle in
   let set_two what =
     let _, set = Map.find_exn result 2 in
-    Ui_effect.Expert.handle (set what)
+    Ui_effect.Expert.handle (set what) ~on_exn:Base.raise
   in
   set_two 3;
   Handle.show handle;
@@ -3610,12 +3734,12 @@ let%expect_test "assoc simplification behavior on cutoffs" =
     {|
     (Assoc
       (map Incr)
-      (key_id  (Test 1))
-      (cmp_id  (Test 2))
-      (data_id (Test 3))
+      (key_id  (Test 0))
+      (cmp_id  (Test 1))
+      (data_id (Test 2))
       (by (
         Return (
-          value (Cutoff (t (Named (uid (Test 3)))) (added_by_let_syntax false))))))
+          value (Cutoff (t (Named (uid (Test 2)))) (added_by_let_syntax false))))))
     |}]
 ;;
 
@@ -3987,18 +4111,12 @@ let%expect_test "sub constant folding optimization" =
   [%expect
     {|
     (Sub
-      (from (
-        Return (
-          value (
-            Mapn (
-              inputs (
-                (Constant (id (Test 0)))
-                (Constant (id (Test 1)))))))))
-      (via (Test 3))
-      (into (Return (value (Mapn (inputs ((Named (uid (Test 3))))))))))
+      (from (Return (value (Mapn (inputs (Constant Constant))))))
+      (via (Test 0))
+      (into (Return (value (Mapn (inputs ((Named (uid (Test 0))))))))))
     |}];
   print_s (sexp_of_computation component);
-  [%expect {| (Return (value (Constant (id (Test 0))))) |}]
+  [%expect {| (Return (value Constant)) |}]
 ;;
 
 let%expect_test "let%map constant folding optimization" =
@@ -4015,32 +4133,23 @@ let%expect_test "let%map constant folding optimization" =
   [%expect
     {|
     (Sub
-      (from (Return (value (Mapn (inputs ((Constant (id (Test 0)))))))))
-      (via (Test 2))
+      (from (Return (value (Mapn (inputs (Constant))))))
+      (via (Test 0))
       (into (
         Sub
-        (from (
-          Return (
-            value (
-              Mapn (
-                inputs (
-                  (Named    (uid (Test 2)))
-                  (Constant (id  (Test 3)))))))))
-        (via (Test 5))
-        (into (Return (value (Mapn (inputs ((Named (uid (Test 5))))))))))))
+        (from (Return (value (Mapn (inputs ((Named (uid (Test 0))) Constant))))))
+        (via (Test 1))
+        (into (Return (value (Mapn (inputs ((Named (uid (Test 1))))))))))))
     |}];
   print_s (sexp_of_computation component);
-  [%expect {| (Return (value (Constant (id (Test 0))))) |}]
+  [%expect {| (Return (value Constant)) |}]
 ;;
 
 let%expect_test "assoc simplifies its inner computation, if possible" =
   let value = opaque_const_value String.Map.empty in
   let component graph =
-    Bonsai.assoc
-      (module String)
-      value
-      graph
-      ~f:(fun key data _graph -> Bonsai.both key data)
+    Bonsai.assoc (module String) value graph ~f:(fun key data _graph ->
+      Bonsai.both key data)
   in
   print_s (sexp_of_computation component);
   [%expect {| (Assoc_simpl (map Incr)) |}]
@@ -4049,11 +4158,8 @@ let%expect_test "assoc simplifies its inner computation, if possible" =
 let%expect_test "assoc with sub simplifies its inner computation, if possible" =
   let value = opaque_const_value String.Map.empty in
   let component graph =
-    Bonsai.assoc
-      (module String)
-      value
-      graph
-      ~f:(fun key data _graph -> Bonsai.both key data)
+    Bonsai.assoc (module String) value graph ~f:(fun key data _graph ->
+      Bonsai.both key data)
   in
   print_s (sexp_of_computation component);
   [%expect {| (Assoc_simpl (map Incr)) |}]
@@ -4071,17 +4177,12 @@ let%expect_test "map > lazy" =
   let rec f ~t ~depth graph =
     let%sub { M.label; M.children } = t in
     let children =
-      Bonsai.assoc
-        (module Int)
-        children
-        graph
-        ~f:(fun _ v graph ->
-          let depth =
-            let%map depth in
-            depth + 1
-          in
-          (Bonsai.Expert.delay [@alert "-deprecated"]) graph ~f:(fun graph ->
-            f ~t:v ~depth graph))
+      Bonsai.assoc (module Int) children graph ~f:(fun _ v graph ->
+        let depth =
+          let%map depth in
+          depth + 1
+        in
+        Bonsai.delay graph ~f:(fun graph -> f ~t:v ~depth graph))
     in
     let%map label and children and depth in
     [%message label (depth : int) (children : Sexp.t Int.Map.t)]
@@ -4116,16 +4217,12 @@ let%expect_test "map > fix2" =
     Bonsai.fix2 t depth graph ~f:(fun ~recurse t depth graph ->
       let%sub { M.label; children } = t in
       let children =
-        Bonsai.assoc
-          (module Int)
-          children
-          graph
-          ~f:(fun _ v ->
-            let depth =
-              let%map depth in
-              depth + 1
-            in
-            recurse v depth)
+        Bonsai.assoc (module Int) children graph ~f:(fun _ v ->
+          let depth =
+            let%map depth in
+            depth + 1
+          in
+          recurse v depth)
       in
       let%map label and children and depth in
       [%message label (depth : int) (children : Sexp.t Int.Map.t)])
@@ -4262,7 +4359,7 @@ let%expect_test "dynamic action sent to non-existent assoc element" =
   let result = Handle.last_result handle in
   let set_two what =
     let _, set = Map.find_exn result 2 in
-    Ui_effect.Expert.handle (set what)
+    Ui_effect.Expert.handle (set what) ~on_exn:Base.raise
   in
   set_two 3;
   Handle.show handle;
@@ -4308,10 +4405,8 @@ module%test [@name "inactive delivery"] _ = struct
         match which_assoc with
         | `Assoc ->
           let i = return () in
-          Bonsai.assoc
-            (module Int)
-            (Bonsai.Expert.Var.value var)
-            ~f:(fun _key _data -> computation i)
+          Bonsai.assoc (module Int) (Bonsai.Expert.Var.value var) ~f:(fun _key _data ->
+            computation i)
         | `Assoc_on ->
           let i = Bonsai.return () in
           Bonsai.Expert.assoc_on
@@ -4343,7 +4438,7 @@ module%test [@name "inactive delivery"] _ = struct
       let result = Handle.last_result handle in
       let set_two what =
         let _, set = Map.find_exn result 2 in
-        Ui_effect.Expert.handle (set what)
+        Ui_effect.Expert.handle (set what) ~on_exn:Base.raise
       in
       set_two 3;
       Handle.show handle;
@@ -4386,18 +4481,18 @@ module%test [@name "inactive delivery"] _ = struct
         (into (
           Sub
           (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
-          (via (Test 2))
+          (via (Test 1))
           (into (
             Sub
             (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
-            (via (Test 4))
+            (via (Test 2))
             (into (
               Return (
                 value (
                   Mapn (
                     inputs (
-                      (Named (uid (Test 2)))
-                      (Named (uid (Test 4))))))))))))))
+                      (Named (uid (Test 1)))
+                      (Named (uid (Test 2))))))))))))))
       ((1 0) (2 0))
       dynamic action
       ((1 0) (2 3))
@@ -4433,18 +4528,18 @@ module%test [@name "inactive delivery"] _ = struct
         (into (
           Sub
           (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
-          (via (Test 2))
+          (via (Test 1))
           (into (
             Sub
             (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
-            (via (Test 4))
+            (via (Test 2))
             (into (
               Return (
                 value (
                   Mapn (
                     inputs (
-                      (Named (uid (Test 2)))
-                      (Named (uid (Test 4))))))))))))))
+                      (Named (uid (Test 1)))
+                      (Named (uid (Test 2))))))))))))))
       ((1 0) (2 0))
       dynamic action
       ((1 0) (2 3))
@@ -4477,22 +4572,22 @@ module%test [@name "inactive delivery"] _ = struct
       {|
       (Sub
         (from (Leaf1 (input Incr)))
-        (via (Test 1))
+        (via (Test 0))
         (into (
           Sub
-          (from (Return (value (Mapn (inputs (Named (uid (Test 1))))))))
-          (via (Test 3))
+          (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
+          (via (Test 1))
           (into (
             Sub
-            (from (Return (value (Mapn (inputs (Named (uid (Test 1))))))))
-            (via (Test 5))
+            (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
+            (via (Test 2))
             (into (
               Return (
                 value (
                   Mapn (
                     inputs (
-                      (Named (uid (Test 3)))
-                      (Named (uid (Test 5))))))))))))))
+                      (Named (uid (Test 1)))
+                      (Named (uid (Test 2))))))))))))))
       ((1 0) (2 0))
       ((1 0) (2 3))
       ((1 0))
@@ -4527,42 +4622,42 @@ module%test [@name "inactive delivery"] _ = struct
         (from (
           Sub
           (from (Leaf1 (input Incr)))
-          (via (Test 1))
+          (via (Test 0))
           (into (
             Sub
-            (from (Return (value (Mapn (inputs (Named (uid (Test 1))))))))
-            (via (Test 3))
+            (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
+            (via (Test 1))
             (into (
               Sub
-              (from (Return (value (Mapn (inputs (Named (uid (Test 1))))))))
-              (via (Test 5))
+              (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
+              (via (Test 2))
               (into (
                 Sub
-                (from (Return (value (Mapn (inputs (Named (uid (Test 5))))))))
-                (via (Test 7))
+                (from (Return (value (Mapn (inputs (Named (uid (Test 2))))))))
+                (via (Test 3))
                 (into (
                   Return (
                     value (
                       Mapn (
                         inputs (
-                          (Named (uid (Test 3)))
-                          (Named (uid (Test 7)))))))))))))))))
-        (via (Test 9))
+                          (Named (uid (Test 1)))
+                          (Named (uid (Test 3)))))))))))))))))
+        (via (Test 4))
         (into (
           Sub
-          (from (Return (value (Mapn (inputs (Named (uid (Test 9))))))))
-          (via (Test 11))
+          (from (Return (value (Mapn (inputs (Named (uid (Test 4))))))))
+          (via (Test 5))
           (into (
             Sub
-            (from (Return (value (Mapn (inputs (Named (uid (Test 9))))))))
-            (via (Test 13))
+            (from (Return (value (Mapn (inputs (Named (uid (Test 4))))))))
+            (via (Test 6))
             (into (
               Return (
                 value (
                   Mapn (
                     inputs (
-                      (Named (uid (Test 11)))
-                      (Named (uid (Test 13))))))))))))))
+                      (Named (uid (Test 5)))
+                      (Named (uid (Test 6))))))))))))))
       ((1 0) (2 0))
       ((1 0) (2 3))
       ((1 0))
@@ -4594,38 +4689,38 @@ module%test [@name "inactive delivery"] _ = struct
           (into (
             Sub
             (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
-            (via (Test 2))
+            (via (Test 1))
             (into (
               Sub
               (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
-              (via (Test 4))
+              (via (Test 2))
               (into (
                 Sub
-                (from (Return (value (Mapn (inputs (Named (uid (Test 4))))))))
-                (via (Test 6))
+                (from (Return (value (Mapn (inputs (Named (uid (Test 2))))))))
+                (via (Test 3))
                 (into (
                   Return (
                     value (
                       Mapn (
                         inputs (
-                          (Named (uid (Test 2)))
-                          (Named (uid (Test 6)))))))))))))))))
-        (via (Test 8))
+                          (Named (uid (Test 1)))
+                          (Named (uid (Test 3)))))))))))))))))
+        (via (Test 4))
         (into (
           Sub
-          (from (Return (value (Mapn (inputs (Named (uid (Test 8))))))))
-          (via (Test 10))
+          (from (Return (value (Mapn (inputs (Named (uid (Test 4))))))))
+          (via (Test 5))
           (into (
             Sub
-            (from (Return (value (Mapn (inputs (Named (uid (Test 8))))))))
-            (via (Test 12))
+            (from (Return (value (Mapn (inputs (Named (uid (Test 4))))))))
+            (via (Test 6))
             (into (
               Return (
                 value (
                   Mapn (
                     inputs (
-                      (Named (uid (Test 10)))
-                      (Named (uid (Test 12))))))))))))))
+                      (Named (uid (Test 5)))
+                      (Named (uid (Test 6))))))))))))))
       ((1 0) (2 0))
       ((1 0) (2 3))
       ((1 0))
@@ -4663,38 +4758,38 @@ module%test [@name "inactive delivery"] _ = struct
           (into (
             Sub
             (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
-            (via (Test 2))
+            (via (Test 1))
             (into (
               Sub
               (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
-              (via (Test 4))
+              (via (Test 2))
               (into (
                 Sub
-                (from (Return (value (Mapn (inputs (Named (uid (Test 4))))))))
-                (via (Test 6))
+                (from (Return (value (Mapn (inputs (Named (uid (Test 2))))))))
+                (via (Test 3))
                 (into (
                   Return (
                     value (
                       Mapn (
                         inputs (
-                          (Named (uid (Test 2)))
-                          (Named (uid (Test 6)))))))))))))))))
-        (via (Test 8))
+                          (Named (uid (Test 1)))
+                          (Named (uid (Test 3)))))))))))))))))
+        (via (Test 4))
         (into (
           Sub
-          (from (Return (value (Mapn (inputs (Named (uid (Test 8))))))))
-          (via (Test 10))
+          (from (Return (value (Mapn (inputs (Named (uid (Test 4))))))))
+          (via (Test 5))
           (into (
             Sub
-            (from (Return (value (Mapn (inputs (Named (uid (Test 8))))))))
-            (via (Test 12))
+            (from (Return (value (Mapn (inputs (Named (uid (Test 4))))))))
+            (via (Test 6))
             (into (
               Return (
                 value (
                   Mapn (
                     inputs (
-                      (Named (uid (Test 10)))
-                      (Named (uid (Test 12))))))))))))))
+                      (Named (uid (Test 5)))
+                      (Named (uid (Test 6))))))))))))))
       ((1 0) (2 0))
       ((1 0) (2 3))
       ((1 0))
@@ -4718,18 +4813,18 @@ module%test [@name "inactive delivery"] _ = struct
         (into (
           Sub
           (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
-          (via (Test 2))
+          (via (Test 1))
           (into (
             Sub
             (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
-            (via (Test 4))
+            (via (Test 2))
             (into (
               Return (
                 value (
                   Mapn (
                     inputs (
-                      (Named (uid (Test 2)))
-                      (Named (uid (Test 4))))))))))))))
+                      (Named (uid (Test 1)))
+                      (Named (uid (Test 2))))))))))))))
       ((1 0) (2 0))
       ((1 0) (2 3))
       ((1 0))
@@ -4743,7 +4838,7 @@ module%test [@name "inactive delivery"] _ = struct
   let%expect_test "static inside of a lazy" =
     (fun _ ->
       opaque_computation
-        ((Bonsai.Expert.delay [@alert "-deprecated"]) ~f:(fun graph ->
+        (Bonsai.delay ~f:(fun graph ->
            let state, inject = Bonsai.state 0 graph in
            Bonsai.both state inject)))
     |> test_delivery_to_inactive_component;
@@ -4751,10 +4846,10 @@ module%test [@name "inactive delivery"] _ = struct
       {|
       (Sub
         (from (Return (value (Mapn (inputs Incr)))))
-        (via (Test 2))
+        (via (Test 0))
         (into (
           Switch
-          (match_ (Named (uid (Test 2))))
+          (match_ (Named (uid (Test 0))))
           (arms ((Lazy t) (Return (value Exception)))))))
       ((1 0) (2 0))
       ((1 0) (2 3))
@@ -4768,7 +4863,7 @@ module%test [@name "inactive delivery"] _ = struct
 
   let%expect_test "static inside of a lazy (optimized away)" =
     (fun _ graph ->
-      (Bonsai.Expert.delay [@alert "-deprecated"])
+      Bonsai.delay
         ~f:(fun graph ->
           let model, inject = Bonsai.state 0 graph in
           Bonsai.both model inject)
@@ -4782,18 +4877,18 @@ module%test [@name "inactive delivery"] _ = struct
         (into (
           Sub
           (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
-          (via (Test 2))
+          (via (Test 1))
           (into (
             Sub
             (from (Return (value (Mapn (inputs (Named (uid (Test 0))))))))
-            (via (Test 4))
+            (via (Test 2))
             (into (
               Return (
                 value (
                   Mapn (
                     inputs (
-                      (Named (uid (Test 2)))
-                      (Named (uid (Test 4))))))))))))))
+                      (Named (uid (Test 1)))
+                      (Named (uid (Test 2))))))))))))))
       ((1 0) (2 0))
       ((1 0) (2 3))
       ((1 0))
@@ -4826,18 +4921,18 @@ module%test [@name "inactive delivery"] _ = struct
           (into (
             Sub
             (from (Return (value (Mapn (inputs (Named (uid (Test 2))))))))
-            (via (Test 4))
+            (via (Test 3))
             (into (
               Sub
               (from (Return (value (Mapn (inputs (Named (uid (Test 2))))))))
-              (via (Test 6))
+              (via (Test 4))
               (into (
                 Return (
                   value (
                     Mapn (
                       inputs (
-                        (Named (uid (Test 4)))
-                        (Named (uid (Test 6))))))))))))))))
+                        (Named (uid (Test 3)))
+                        (Named (uid (Test 4))))))))))))))))
       ((1 0) (2 0))
       ((1 0) (2 3))
       ((1 0))
@@ -4859,26 +4954,26 @@ module%test [@name "inactive delivery"] _ = struct
       {|
       (Sub
         (from (Return (value (Mapn (inputs Incr)))))
-        (via (Test 2))
+        (via (Test 0))
         (into (
           Sub
           (from Leaf0)
-          (via (Test 3))
+          (via (Test 1))
           (into (
             Sub
-            (from (Return (value (Mapn (inputs (Named (uid (Test 3))))))))
-            (via (Test 5))
+            (from (Return (value (Mapn (inputs (Named (uid (Test 1))))))))
+            (via (Test 2))
             (into (
               Sub
-              (from (Return (value (Mapn (inputs (Named (uid (Test 3))))))))
-              (via (Test 7))
+              (from (Return (value (Mapn (inputs (Named (uid (Test 1))))))))
+              (via (Test 3))
               (into (
                 Return (
                   value (
                     Mapn (
                       inputs (
-                        (Named (uid (Test 5)))
-                        (Named (uid (Test 7))))))))))))))))
+                        (Named (uid (Test 2)))
+                        (Named (uid (Test 3))))))))))))))))
       ((1 0) (2 0))
       ((1 0) (2 3))
       ((1 0))
@@ -4912,37 +5007,37 @@ module%test [@name "inactive delivery"] _ = struct
               (into (
                 Sub
                 (from (Return (value (Mapn (inputs (Named (uid (Test 1))))))))
-                (via (Test 3))
+                (via (Test 2))
                 (into (
                   Sub
                   (from (Return (value (Mapn (inputs (Named (uid (Test 1))))))))
-                  (via (Test 5))
+                  (via (Test 3))
                   (into (
                     Return (
                       value (
                         Mapn (
                           inputs (
-                            (Named (uid (Test 3)))
-                            (Named (uid (Test 5)))))))))))))))
-            (via (Test 7))
+                            (Named (uid (Test 2)))
+                            (Named (uid (Test 3)))))))))))))))
+            (via (Test 4))
             (into (
               Return (
                 value (
                   Mapn (
                     inputs (
-                      (Named (uid (Test 7)))
+                      (Named (uid (Test 4)))
                       (Named (uid (Test 0)))))))))))
           (reset_id (Test 0))))
-        (via (Test 9))
+        (via (Test 5))
         (into (
           Sub
-          (from (Return (value (Mapn (inputs (Named (uid (Test 9))))))))
-          (via (Test 11))
+          (from (Return (value (Mapn (inputs (Named (uid (Test 5))))))))
+          (via (Test 6))
           (into (
             Sub
-            (from (Return (value (Mapn (inputs (Named (uid (Test 9))))))))
-            (via (Test 13))
-            (into (Return (value (Named (uid (Test 11)))))))))))
+            (from (Return (value (Mapn (inputs (Named (uid (Test 5))))))))
+            (via (Test 7))
+            (into (Return (value (Named (uid (Test 6)))))))))))
       ((1 0) (2 0))
       ((1 0) (2 3))
       ((1 0))
@@ -4979,8 +5074,8 @@ module%test [@name "inactive delivery"] _ = struct
     in
     Handle.show handle;
     let (_, set_value), reset = Handle.last_result handle in
-    let set_value i = Ui_effect.Expert.handle (set_value i) in
-    let reset () = Ui_effect.Expert.handle reset in
+    let set_value i = Ui_effect.Expert.handle (set_value i) ~on_exn:Base.raise in
+    let reset () = Ui_effect.Expert.handle reset ~on_exn:Base.raise in
     set_value 3;
     Handle.show handle;
     Bonsai.Expert.Var.set which_branch false;
@@ -5029,8 +5124,8 @@ module%test [@name "inactive delivery"] _ = struct
     in
     Handle.show handle;
     let (_, set_value), reset = Handle.last_result handle in
-    let set_value i = Ui_effect.Expert.handle (set_value i) in
-    let reset () = Ui_effect.Expert.handle reset in
+    let set_value i = Ui_effect.Expert.handle (set_value i) ~on_exn:Base.raise in
+    let reset () = Ui_effect.Expert.handle reset ~on_exn:Base.raise in
     set_value 3;
     Handle.show handle;
     Bonsai.Expert.Var.set which_branch false;
@@ -5205,7 +5300,7 @@ module%test [@name "inactive delivery"] _ = struct
         let%sub state, inject =
           match%sub opaque_const_value true with
           | true ->
-            (Bonsai.Expert.delay [@alert "-deprecated"]) graph ~f:(fun graph ->
+            Bonsai.delay graph ~f:(fun graph ->
               let state, inject = Bonsai.state 0 ~reset:(fun _ -> 999) graph in
               Bonsai.both state inject)
           | false -> assert false
@@ -5230,8 +5325,7 @@ module%test [@name "inactive delivery"] _ = struct
 
     let%expect_test "next to an inactive infinitely-recursive lazy" =
       let rec infinitely_recursive_component graph =
-        (Bonsai.Expert.delay [@alert "-deprecated"]) graph ~f:(fun graph ->
-          infinitely_recursive_component graph)
+        Bonsai.delay graph ~f:(fun graph -> infinitely_recursive_component graph)
       in
       let component graph =
         let%sub state, inject =
@@ -5515,35 +5609,35 @@ module%test [@name "inactive delivery"] _ = struct
       {|
       (Assoc_on
         (map Incr)
-        (io_key_id    (Test 1))
-        (model_key_id (Test 2))
-        (model_cmp_id (Test 3))
-        (data_id      (Test 4))
+        (io_key_id    (Test 0))
+        (model_key_id (Test 1))
+        (model_cmp_id (Test 2))
+        (data_id      (Test 3))
         (by (
           Sub
           (from (Leaf1 (input Incr)))
-          (via (Test 6))
+          (via (Test 4))
           (into (
             Sub
-            (from (Return (value (Mapn (inputs (Named (uid (Test 6))))))))
-            (via (Test 8))
+            (from (Return (value (Mapn (inputs (Named (uid (Test 4))))))))
+            (via (Test 5))
             (into (
               Sub
-              (from (Return (value (Mapn (inputs (Named (uid (Test 6))))))))
-              (via (Test 10))
+              (from (Return (value (Mapn (inputs (Named (uid (Test 4))))))))
+              (via (Test 6))
               (into (
                 Return (
                   value (
                     Mapn (
                       inputs (
-                        (Named (uid (Test 8)))
-                        (Named (uid (Test 10))))))))))))))))
+                        (Named (uid (Test 5)))
+                        (Named (uid (Test 6))))))))))))))))
       |}];
     Handle.show handle;
     let result = Handle.last_result handle in
     let set key to_what =
       let _, set = Map.find_exn result key in
-      Ui_effect.Expert.handle (set to_what)
+      Ui_effect.Expert.handle (set to_what) ~on_exn:Base.raise
     in
     let set_one = set 1 in
     let set_two = set 2 in
@@ -5764,14 +5858,14 @@ let%expect_test "constant_folding on assoc containing a lifecycle" =
     {|
     (Assoc
       (map Incr)
-      (key_id  (Test 1))
-      (cmp_id  (Test 2))
-      (data_id (Test 3))
+      (key_id  (Test 0))
+      (cmp_id  (Test 1))
+      (data_id (Test 2))
       (by (
         Sub
-        (from (Lifecycle (value (Constant (id (Test 4))))))
-        (via (Test 5))
-        (into (Return (value (Named (uid (Test 3)))))))))
+        (from (Lifecycle (value Constant)))
+        (via (Test 3))
+        (into (Return (value (Named (uid (Test 2)))))))))
     |}]
 ;;
 
@@ -5799,13 +5893,13 @@ let%expect_test "constant_folding on assoc containing a lifecycle that depends o
     {|
     (Assoc
       (map Incr)
-      (key_id  (Test 1))
-      (cmp_id  (Test 2))
-      (data_id (Test 3))
+      (key_id  (Test 0))
+      (cmp_id  (Test 1))
+      (data_id (Test 2))
       (by (
         Sub
         (from (Return (value (Mapn (inputs (Incr))))))
-        (via (Test 6))
+        (via (Test 3))
         (into (
           Sub
           (from (
@@ -5815,17 +5909,15 @@ let%expect_test "constant_folding on assoc containing a lifecycle that depends o
                 value (
                   Mapn (
                     inputs (
-                      (Mapn (inputs ((Named (uid (Test 6))))))
-                      (Constant (id (Test 8)))
-                      (Constant (id (Test 9)))))))))
-            (via (Test 11))
+                      (Mapn (inputs ((Named (uid (Test 3)))))) Constant Constant))))))
+            (via (Test 4))
             (into (
               Sub
-              (from (Return (value (Mapn (inputs ((Named (uid (Test 11)))))))))
-              (via (Test 13))
-              (into (Lifecycle (value (Named (uid (Test 13))))))))))
-          (via (Test 14))
-          (into (Return (value (Named (uid (Test 3)))))))))))
+              (from (Return (value (Mapn (inputs ((Named (uid (Test 4)))))))))
+              (via (Test 5))
+              (into (Lifecycle (value (Named (uid (Test 5))))))))))
+          (via (Test 6))
+          (into (Return (value (Named (uid (Test 2)))))))))))
     |}]
 ;;
 
@@ -5846,24 +5938,24 @@ let%expect_test "constant_folding on assoc containing a dynamic_scope" =
     {|
     (Assoc
       (map Incr)
-      (key_id  (Test 1))
-      (cmp_id  (Test 2))
-      (data_id (Test 3))
+      (key_id  (Test 0))
+      (cmp_id  (Test 1))
+      (data_id (Test 2))
       (by (
         Store
-        (id (Test 4))
+        (id (Test 3))
         (value Incr)
         (inner (
           Sub
-          (from (Fetch (id (Test 4))))
-          (via (Test 6))
+          (from (Fetch (id (Test 3))))
+          (via (Test 4))
           (into (
             Return (
               value (
                 Mapn (
                   inputs (
-                    (Named (uid (Test 3)))
-                    (Named (uid (Test 6))))))))))))))
+                    (Named (uid (Test 2)))
+                    (Named (uid (Test 4))))))))))))))
     |}]
 ;;
 
@@ -6198,7 +6290,7 @@ module%test Clock_every = struct
       Bonsai.Expert.Var.set interval_var (Time_ns.Span.of_sec 2.0);
       move_forward_and_show ();
       (* this next "expect" block would be "hi" if the changed interval was realized
-         immediately, but it'll only get read after the next time that the effect is 
+         immediately, but it'll only get read after the next time that the effect is
          performed. *)
       [%expect {| |}];
       move_forward_and_show ();
@@ -9243,13 +9335,9 @@ let%expect_test "evaluation of pure values as an input to an assoc (with a state
     in
     let used_somewhere =
       let intermediate =
-        Bonsai.assoc
-          (module Int)
-          input_map
-          graph
-          ~f:(fun _key _data graph ->
-            let (_ : _) = Bonsai.state () graph in
-            return ())
+        Bonsai.assoc (module Int) input_map graph ~f:(fun _key _data graph ->
+          let (_ : _) = Bonsai.state () graph in
+          return ())
       in
       Bonsai.Bonsai.Map.cutoff intermediate ~equal:phys_equal graph
     in
@@ -9293,19 +9381,15 @@ let%expect_test "evaluation of pure values as an input to an assoc (with a \
     in
     let used_somewhere =
       let intermediate =
-        Bonsai.assoc
-          (module Int)
-          input_map
-          graph
-          ~f:(fun _key _data graph ->
-            let (_ : _) =
-              Bonsai.state_machine_with_input
-                ~default_model:()
-                ~apply_action:(fun _ _ _ _ -> ())
-                (opaque_const_value ())
-                graph
-            in
-            return ())
+        Bonsai.assoc (module Int) input_map graph ~f:(fun _key _data graph ->
+          let (_ : _) =
+            Bonsai.state_machine_with_input
+              ~default_model:()
+              ~apply_action:(fun _ _ _ _ -> ())
+              (opaque_const_value ())
+              graph
+          in
+          return ())
       in
       Bonsai.Bonsai.Map.cutoff intermediate ~equal:phys_equal graph
     in
@@ -10368,7 +10452,7 @@ module%test [@name "Action delivery paths"] _ = struct
         let%map inject in
         inject ()
       | true ->
-        (Bonsai.Expert.delay [@alert "-deprecated"]) graph ~f:(fun graph ->
+        Bonsai.delay graph ~f:(fun graph ->
           let _, inject =
             Bonsai.state_machine
               ~default_model:()
@@ -10414,19 +10498,15 @@ module%test [@name "Action delivery paths"] _ = struct
   let%expect_test "Assoc" =
     let input = Bonsai.Expert.Var.create (Int.Map.of_alist_exn [ 1, (); 2, () ]) in
     let component graph =
-      Bonsai.assoc
-        (module Int)
-        (Bonsai.Expert.Var.value input)
-        graph
-        ~f:(fun _ _ graph ->
-          let _, inject =
-            Bonsai.state_machine
-              ~default_model:()
-              ~apply_action:(fun _context () () -> ())
-              graph
-          in
-          let%map inject in
-          inject ())
+      Bonsai.assoc (module Int) (Bonsai.Expert.Var.value input) graph ~f:(fun _ _ graph ->
+        let _, inject =
+          Bonsai.state_machine
+            ~default_model:()
+            ~apply_action:(fun _context () () -> ())
+            graph
+        in
+        let%map inject in
+        inject ())
     in
     let module Action = struct
       type t = Entry of int [@@deriving sexp_of]

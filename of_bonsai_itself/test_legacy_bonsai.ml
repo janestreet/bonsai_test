@@ -59,12 +59,9 @@ end
 let%expect_test "enum" =
   let open Bonsai_arrow_deprecated.Infix in
   let component =
-    Bonsai_arrow_deprecated.enum
-      (module Bool)
-      ~which:Tuple2.get1
-      ~handle:(function
-        | true -> Tuple2.get2 @>> Bonsai_arrow_deprecated.pure ~f:(sprintf "true %d")
-        | false -> Tuple2.get2 @>> Bonsai_arrow_deprecated.pure ~f:(sprintf "false %d"))
+    Bonsai_arrow_deprecated.enum (module Bool) ~which:Tuple2.get1 ~handle:(function
+      | true -> Tuple2.get2 @>> Bonsai_arrow_deprecated.pure ~f:(sprintf "true %d")
+      | false -> Tuple2.get2 @>> Bonsai_arrow_deprecated.pure ~f:(sprintf "false %d"))
   in
   run_test ~component ~initial_input:(true, 5) ~f:(fun driver ->
     [%expect {| |}];

@@ -21,7 +21,7 @@
   (bash "pandoc tests.md > tests.html")))
 
 (alias
- (name DEFAULT)
+ (name default)
  (deps ./tests.md))
 
 (alias
