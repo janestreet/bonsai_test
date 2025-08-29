@@ -53,7 +53,9 @@ module%test Dynamic_cutoff = struct
     let equal_var = Bonsai.Expert.Var.create (fun a b -> a = b) in
     let value = Bonsai.Expert.Var.value var in
     let equal = Bonsai.Expert.Var.value equal_var in
-    let component graph = Bonsai_extra.dynamic_cutoff value ~equal graph in
+    let component graph =
+      Bonsai_extra.Value_utilities.dynamic_cutoff value ~equal graph
+    in
     let handle = Handle.create (Result_spec.string (module Int)) component in
     { set_value = Bonsai.Expert.Var.set var
     ; set_equal = Bonsai.Expert.Var.set equal_var
@@ -8578,7 +8580,7 @@ let%expect_test "derived value nested revert outer" =
 
 let%expect_test "exactly once" =
   let component graph =
-    Bonsai_extra.exactly_once
+    Bonsai_extra.Effects.exactly_once
       (Bonsai.return (Ui_effect.print_s [%message "hello!"]))
       graph;
     Bonsai.return ()
@@ -8596,7 +8598,7 @@ let%expect_test "exactly once" =
 
 let%expect_test "exactly once with value" =
   let component graph =
-    Bonsai_extra.exactly_once_with_value
+    Bonsai_extra.Effects.exactly_once_with_value
       ~equal:[%equal: String.t]
       (return
          (let%bind.Ui_effect () = Ui_effect.print_s [%message "hello!"] in
@@ -8625,7 +8627,7 @@ let%expect_test "~yoink~ peek" =
   let component graph =
     let state, set_state = Bonsai.state 0 graph in
     let peek_state = Bonsai.peek state graph in
-    Bonsai_extra.exactly_once
+    Bonsai_extra.Effects.exactly_once
       (let%map peek_state and set_state in
        let%bind.Bonsai.Effect () = set_state 1 in
        let%bind.Bonsai.Effect s =
@@ -8656,7 +8658,7 @@ let%expect_test "bonk" =
         ~apply_action:(fun _context () message -> print_endline message)
         graph
     in
-    let bonk = Bonsai_extra.bonk graph in
+    let bonk = Bonsai_extra.Effects.bonk graph in
     let%map inject_message and bonk in
     ( inject_message "immediate"
     , bonk (inject_message "bonked")
@@ -8725,7 +8727,7 @@ let%expect_test "bonk sorts a list" =
         in
         Bonsai.both model inject)
     in
-    let bonk = Bonsai_extra.bonk graph in
+    let bonk = Bonsai_extra.Effects.bonk graph in
     let%map items, inject_item = items_and_inject_item
     and bonk
     and reset in
@@ -8986,7 +8988,7 @@ let%expect_test "with_self_effect" =
   end
   in
   let component graph =
-    Bonsai_extra.with_self_effect
+    Bonsai_extra.Fixed_point.with_self_effect
       ~f:(fun input graph ->
         let number, set_number = Bonsai.state 0 graph in
         let%map number and set_number and input in
@@ -9030,7 +9032,7 @@ let%expect_test "with_self_effect" =
 let%expect_test "state_machine_dynamic_model" =
   let component graph =
     let state, inject =
-      Bonsai_extra.state_machine0_dynamic_model
+      Bonsai_extra.State_machine.state_machine0_dynamic_model
         ~model:
           (`Computed
             (return (function
@@ -9062,7 +9064,7 @@ let%expect_test "state_machine_dynamic_model" =
 let%expect_test "portal" =
   let var = Bonsai.Expert.Var.create (Sexp.Atom "hello") in
   let component graph =
-    Bonsai_extra.with_inject_fixed_point
+    Bonsai_extra.Fixed_point.with_inject_fixed_point
       (fun inject graph ->
         Bonsai.Edge.on_change
           ~equal:[%equal: Sexp.t]
@@ -9084,7 +9086,7 @@ let%expect_test "portal" =
 
 let%expect_test "portal 2" =
   let component =
-    Bonsai_extra.with_inject_fixed_point (fun inject_fix graph ->
+    Bonsai_extra.Fixed_point.with_inject_fixed_point (fun inject_fix graph ->
       let state1, inject1 =
         Bonsai.state_machine_with_input
           ~default_model:0
@@ -9139,7 +9141,7 @@ let%expect_test "portal 2" =
 
 let%expect_test "pipe" =
   let component graph =
-    let push, pop = Bonsai_extra.pipe graph in
+    let push, pop = Bonsai_extra.Pipe.pipe graph in
     let%map push and pop in
     let pop s =
       let%bind.Bonsai.Effect a = pop in
@@ -9778,7 +9780,10 @@ let%expect_test "value_with_override" =
   let value = Bonsai.Expert.Var.value default_var in
   let component graph =
     let value, override =
-      Bonsai_extra.value_with_override ~equal:[%equal: String.t] value graph
+      Bonsai_extra.Value_utilities.value_with_override
+        ~equal:[%equal: String.t]
+        value
+        graph
     in
     Bonsai.both value override
   in
@@ -9817,7 +9822,7 @@ let%expect_test "value_with_override in resetter" =
     let component graph =
       let (state, override), reset_effect =
         Bonsai.with_model_resetter_n ~n:Two graph ~f:(fun graph ->
-          Bonsai_extra.value_with_override value graph)
+          Bonsai_extra.Value_utilities.value_with_override value graph)
       in
       Bonsai.both (Bonsai.both state override) reset_effect
     in

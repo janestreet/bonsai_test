@@ -444,3 +444,17 @@ module%test [@name "match%%sub [%%lazy]"] _ = struct
     [%expect {| B |}]
   ;;
 end
+
+let%expect_test "match%sub with . cases goes to correct case" =
+  let component _graph =
+    let a : (int, Nothing.t) Result.t Bonsai.t = Bonsai.return (Ok 3) in
+    match%sub a with
+    | Ok 0 -> Bonsai.return 0
+    | Error _ -> .
+    | Ok 1 -> Bonsai.return 1
+    | Ok _ -> Bonsai.return 2
+  in
+  let handle = Handle.create (Result_spec.sexp (module Int)) component in
+  Handle.show handle;
+  [%expect {| 2 |}]
+;;
