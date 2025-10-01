@@ -553,7 +553,7 @@ let%expect_test "assoc_on" =
   let result = Handle.last_result handle in
   let set_two what =
     let _, set = Map.find_exn result 2 in
-    Ui_effect.Expert.handle (set what)
+    Ui_effect.Expert.handle (set what) ~on_exn:Base.raise
   in
   set_two 3;
   Handle.show handle;
@@ -1213,7 +1213,7 @@ let%expect_test "dynamic action sent to non-existent assoc element" =
   let result = Handle.last_result handle in
   let set_two what =
     let _, set = Map.find_exn result 2 in
-    Ui_effect.Expert.handle (set what)
+    Ui_effect.Expert.handle (set what) ~on_exn:Base.raise
   in
   set_two 3;
   Handle.show handle;
@@ -1294,7 +1294,7 @@ module%test [@name "inactive delivery"] _ = struct
       let result = Handle.last_result handle in
       let set_two what =
         let _, set = Map.find_exn result 2 in
-        Ui_effect.Expert.handle (set what)
+        Ui_effect.Expert.handle (set what) ~on_exn:Base.raise
       in
       set_two 3;
       Handle.show handle;
@@ -1798,8 +1798,8 @@ module%test [@name "inactive delivery"] _ = struct
     in
     Handle.show handle;
     let (_, set_value), reset = Handle.last_result handle in
-    let set_value i = Ui_effect.Expert.handle (set_value i) in
-    let reset () = Ui_effect.Expert.handle reset in
+    let set_value i = Ui_effect.Expert.handle (set_value i) ~on_exn:Base.raise in
+    let reset () = Ui_effect.Expert.handle reset ~on_exn:Base.raise in
     set_value 3;
     Handle.show handle;
     Bonsai.Var.set which_branch false;
@@ -1849,8 +1849,8 @@ module%test [@name "inactive delivery"] _ = struct
     in
     Handle.show handle;
     let (_, set_value), reset = Handle.last_result handle in
-    let set_value i = Ui_effect.Expert.handle (set_value i) in
-    let reset () = Ui_effect.Expert.handle reset in
+    let set_value i = Ui_effect.Expert.handle (set_value i) ~on_exn:Base.raise in
+    let reset () = Ui_effect.Expert.handle reset ~on_exn:Base.raise in
     set_value 3;
     Handle.show handle;
     Bonsai.Var.set which_branch false;
@@ -2375,7 +2375,7 @@ module%test [@name "inactive delivery"] _ = struct
     let result = Handle.last_result handle in
     let set key to_what =
       let _, set = Map.find_exn result key in
-      Ui_effect.Expert.handle (set to_what)
+      Ui_effect.Expert.handle (set to_what) ~on_exn:Base.raise
     in
     let set_one = set 1 in
     let set_two = set 2 in

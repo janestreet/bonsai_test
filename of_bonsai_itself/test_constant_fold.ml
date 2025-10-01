@@ -143,7 +143,7 @@ let%expect_test "opaque only used in a lazy not optimized away (but the lazy mig
   constant_fold_and_diff c;
   [%expect
     {|
-    -1,12 +1,12
+    === DIFF HUNK ===
       (Sub
         (from (Return (value Incr)))
         (via (Test 0))
@@ -306,7 +306,7 @@ let%expect_test "errors_propagate_but_are_not_thrown" =
   print_computation c;
   [%expect {| (Return (value (Mapn (inputs ((Mapn (inputs (Constant))) Incr))))) |}];
   print_computation (constant_fold c);
-  [%expect {| (Return (value Exception)) |}]
+  [%expect {| (Return (value (Mapn (inputs (Incr))))) |}]
 ;;
 
 let%expect_test "cutoff gets folded away" =
@@ -411,7 +411,7 @@ let%expect_test "a constant input to assoc gets distributed to a bunch of subs" 
   constant_fold_and_diff c;
   [%expect
     {|
-    -1,17 +1,30
+    === DIFF HUNK ===
       (Sub
         (from (Return (value Incr)))
         (via (Test 0))

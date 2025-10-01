@@ -123,13 +123,29 @@ end
 
 module Switch = struct
   type t =
-    | Arr_then_match of { uses_state : bool }
-    | Match_sub of { uses_state : bool }
+    | Arr_then_match of
+        { uses_state : bool
+        ; two_inputs : bool
+        }
+    | Match_sub of
+        { uses_state : bool
+        ; two_inputs : bool
+        }
   [@@deriving compare, sexp_of, enumerate]
 
+  let get_qualifiers ~uses_state ~two_inputs =
+    match uses_state, two_inputs with
+    | true, true -> " (state, two inputs)"
+    | false, true -> " (two inputs)"
+    | true, false -> " (state)"
+    | false, false -> ""
+  ;;
+
   let name = function
-    | Arr_then_match { uses_state } -> "arr+match" ^ if uses_state then " (state)" else ""
-    | Match_sub { uses_state } -> "match%sub" ^ if uses_state then " (state)" else ""
+    | Arr_then_match { uses_state; two_inputs } ->
+      "arr+match" ^ get_qualifiers ~uses_state ~two_inputs
+    | Match_sub { uses_state; two_inputs } ->
+      "match%sub" ^ get_qualifiers ~uses_state ~two_inputs
   ;;
 
   let computation config enabled (local_ graph) =
@@ -140,8 +156,8 @@ module Switch = struct
     in
     let uses_state =
       match config with
-      | Arr_then_match { uses_state } -> uses_state
-      | Match_sub { uses_state } -> uses_state
+      | Arr_then_match { uses_state; _ } -> uses_state
+      | Match_sub { uses_state; _ } -> uses_state
     in
     let f =
       match uses_state with
@@ -149,17 +165,31 @@ module Switch = struct
       | false -> with_state
     in
     match config with
-    | Arr_then_match _ ->
+    | Arr_then_match { two_inputs = false; _ } ->
       let%arr enabled
       and branch_true = f "true" graph
       and branch_false = f "false" graph in
       (match enabled with
        | true -> branch_true
        | false -> branch_false)
-    | Match_sub _ ->
+    | Arr_then_match { two_inputs = true; _ } ->
+      let unused = Bonsai.Expert.Var.value (Bonsai.Expert.Var.create ()) in
+      let%arr enabled
+      and unused
+      and branch_true = f "true" graph
+      and branch_false = f "false" graph in
+      (match enabled, unused with
+       | true, _ -> branch_true
+       | false, _ -> branch_false)
+    | Match_sub { two_inputs = false; _ } ->
       (match%sub enabled with
        | true -> f "true" graph
        | false -> f "false" graph)
+    | Match_sub { two_inputs = true; _ } ->
+      let unused = Bonsai.Expert.Var.value (Bonsai.Expert.Var.create ()) in
+      (match%sub enabled, unused with
+       | true, _ -> f "true" graph
+       | false, _ -> f "false" graph)
   ;;
 
   let all_computations =

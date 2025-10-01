@@ -6,7 +6,7 @@ module Effect = struct
   module External = Define (struct
       module Action = String
 
-      let handle str = printf "External event: %s\n" str
+      let handle str ~on_exn:_ = printf "External event: %s\n" str
     end)
 
   let sequence l = Many l

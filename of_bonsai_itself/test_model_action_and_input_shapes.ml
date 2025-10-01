@@ -200,8 +200,8 @@ module%test [@name "model_resetter"] _ = struct
       ("without optimizations"
         (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))
         (incr_graph (
-          (nodes 10)
-          (edges 13))))
+          (nodes 12)
+          (edges 16))))
 
       ("with optimizations"
         (shapes ((model unit) (action (Leaf Nothing.t)) (input unit)))

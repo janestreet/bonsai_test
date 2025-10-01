@@ -7,7 +7,7 @@ type ('i, 'r) t =
   ; handle : 'r Bonsai_driver.t
   }
 
-let create ?optimize ~time_source ~initial_input component =
+let create ~(here : [%call_pos]) ?optimize ~time_source ~initial_input component =
   let input_var, computation =
     let input_var = Incr.Var.create initial_input in
     let computation =
@@ -21,6 +21,7 @@ let create ?optimize ~time_source ~initial_input component =
   in
   let handle =
     Bonsai_driver.create
+      ~here
       ?optimize
       ~instrumentation:(Bonsai_driver.Instrumentation.default_for_test_handles ())
       ~time_source

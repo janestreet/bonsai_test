@@ -18,8 +18,14 @@ end
 
 module Switch : sig
   type t =
-    | Arr_then_match of { uses_state : bool }
-    | Match_sub of { uses_state : bool }
+    | Arr_then_match of
+        { uses_state : bool
+        ; two_inputs : bool
+        }
+    | Match_sub of
+        { uses_state : bool
+        ; two_inputs : bool
+        }
   [@@deriving compare, sexp_of, enumerate]
 
   val all_computations : (string * (bool, string) compare_computation) list Lazy.t

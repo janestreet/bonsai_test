@@ -996,6 +996,8 @@ let%expect_test "name_used_twice" =
 
 type packed = T : (unit -> 'a Computation.t) -> packed
 
+let dot_exe = "dot"
+
 open Async
 
 let command =
@@ -1026,7 +1028,7 @@ let command =
            |> Deferred.List.iter ~how:`Sequential ~f:(fun (name, T computation) ->
              print_endline [%string "Processing %{name}"];
              write_computation_to_dot [%string "%{name}.dot"] (computation ());
-             Sys_unix.command_exn [%string "dot -Tsvg %{name}.dot -o %{name}.svg"];
+             Sys_unix.command_exn [%string "%{dot_exe} -Tsvg %{name}.dot -o %{name}.svg"];
              let%bind () = Sys.remove [%string "%{name}.dot"] in
              Writer.write
                writer
@@ -1058,7 +1060,7 @@ let command =
              Handle.recompute_view handle;
              graph_info_to_dot filename !graph_info
            in
-           Sys_unix.command_exn [%string "dot -Tsvg %{name}.dot -o %{name}.svg"];
+           Sys_unix.command_exn [%string "%{dot_exe} -Tsvg %{name}.dot -o %{name}.svg"];
            let%bind () = Sys.remove [%string "%{name}.dot"] in
            Writer.write
              writer

@@ -634,8 +634,11 @@ let%expect_test "state_machine1 that schedules an action which sets an upstream 
    should. This is an example of a misuse of the [Incr.Expert.Node] API where impurity is
    leaking to the user. While we could technically guard against this, users breaking
    Incremental's abstractions do so at their own risk. *)
-let%expect_test "state_machine1 depending on Incr.Expert.Node.t that breaks abstraction \
-                 doesn't stabilize when marked stale"
+let%expect_test ("state_machine1 depending on Incr.Expert.Node.t that breaks abstraction \
+                  doesn't stabilize when marked stale"
+  (* This test is disabled because breaking incremental's invariants will
+     cause incremental to flip out when you turn JSC_DEBUG on. *)
+  [@tags "disabled"])
   =
   let counter = ref 0 in
   let expert_node =
