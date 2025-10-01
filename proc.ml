@@ -82,6 +82,7 @@ module Handle = struct
 
   let create
     (type result incoming)
+    ?(here = Stdlib.Lexing.dummy_pos)
     ?(start_time = Time_ns.epoch)
     ~optimize
     (result_spec : (result, incoming) Result_spec.t)
@@ -95,7 +96,7 @@ module Handle = struct
       result, lazy (R.view result), R.incoming result
     in
     let time_source = Bonsai.Time_source.create ~start:start_time in
-    let handle = Driver.create ~optimize ~initial_input:() ~time_source component in
+    let handle = Driver.create ~here ~optimize ~initial_input:() ~time_source component in
     Bonsai_test_handle_garbage_collector.register_cleanup (fun () ->
       Driver.invalidate_observers handle);
     handle
@@ -212,7 +213,7 @@ module Handle = struct
     (result_spec : (result, incoming) Result_spec.t)
     computation
     =
-    let handle = create ?start_time ~optimize result_spec computation in
+    let handle = create ~here ?start_time ~optimize result_spec computation in
     (* [assert_node_paths_identical_between_transform_and_skeleton_nodepaths] is a useful
        function to verify that the skeleton code correctly generates node_path identifiers.
        It's nice to run on every test, but was taking up ~20% of the run time for most

@@ -4,7 +4,8 @@ open! Import
 type ('i, 'r) t
 
 val create
-  :  ?optimize:bool
+  :  ?here:Stdlib.Lexing.position
+  -> ?optimize:bool
   -> time_source:Bonsai.Time_source.t
   -> initial_input:'i
   -> ('i Bonsai.t -> Bonsai.graph -> 'r Bonsai.t)

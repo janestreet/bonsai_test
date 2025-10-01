@@ -102,3 +102,59 @@ let%expect_test "Actor functor - using apply_action_context" =
     recursive; increment
     |}]
 ;;
+
+let%expect_test "Actor functor - basic functionality (create with input is callable / \
+                 type checks)"
+  =
+  (* NOTE: This is a tiny check that guards against a bug where [create_with_input] was
+     uncallable. *)
+  let module Actor = Bonsai.Actor (Action) in
+  let recv_fn
+    : type a.
+      Actor.get_apply_action_context
+      -> unit Bonsai.Computation_status.t
+      -> int
+      -> a Action.t
+      -> int * a
+    =
+    fun _ctx _ model action ->
+    match action with
+    | Action.Increment -> model + 1, model
+    | Action.Get_string s -> model, sprintf "Got %s at count %d" s model
+  in
+  let component graph =
+    let model, inject =
+      Actor.create_with_input
+        ~default_model:0
+        ~recv:{ Actor.f = recv_fn }
+        (Bonsai.return ())
+        graph
+    in
+    let%arr model
+    and (inject : Actor.inject) = inject in
+    ( model
+    , let%bind.Effect count = inject.f Action.Increment in
+      let%bind.Effect message = inject.f (Action.Get_string "hello") in
+      Effect.print_s [%message (count : int) (message : string)] )
+  in
+  let handle =
+    Handle.create
+      (module struct
+        type t = int * unit Effect.t
+        type incoming = unit
+
+        let view (model, _) = Int.to_string model
+        let incoming (_, effect) () = effect
+      end)
+      component
+  in
+  Handle.show handle;
+  [%expect {| 0 |}];
+  Handle.do_actions handle [ () ];
+  Handle.show handle;
+  [%expect
+    {|
+    ((count 0) (message "Got hello at count 1"))
+    1
+    |}]
+;;
