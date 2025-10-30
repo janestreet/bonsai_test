@@ -28,3 +28,33 @@ let%expect_test _ =
   Handle.show handle;
   [%expect {| true |}]
 ;;
+
+(* This can be fixed by passing in [~trigger:`Before_display]. *)
+
+let component input graph =
+  let state, set_state = Bonsai.state false graph in
+  Bonsai.Edge.on_change
+    ~trigger:`Before_display
+    ~equal:[%equal: bool]
+    input
+    ~callback:set_state
+    graph;
+  state
+;;
+
+let%expect_test _ =
+  let var = Bonsai.Expert.Var.create false in
+  let handle =
+    Handle.create
+      (Result_spec.sexp (module Bool))
+      (fun graph -> component (Bonsai.Expert.Var.value var) graph)
+  in
+  Handle.show handle;
+  [%expect {| false |}];
+  Bonsai.Expert.Var.set var true;
+  Handle.show handle;
+  (* This updates immediately now. *)
+  [%expect {| true |}];
+  Handle.show handle;
+  [%expect {| true |}]
+;;

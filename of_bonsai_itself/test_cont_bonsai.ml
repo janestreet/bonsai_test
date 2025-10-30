@@ -3327,7 +3327,7 @@ let%expect_test "store named in a ref (simple)" =
   [%expect {| |}]
 ;;
 
-let%expect_test "on_display" =
+let%expect_test "after_display" =
   let component graph =
     let state, set_state = Bonsai.state 0 graph in
     let update =
@@ -3348,7 +3348,7 @@ let%expect_test "on_display" =
   [%expect {| 3 |}]
 ;;
 
-let%expect_test "on_display for updating a state" =
+let%expect_test "after_display for updating a state" =
   let component input graph =
     let state, set_state = Bonsai.state_opt graph in
     let update =
@@ -3386,6 +3386,217 @@ let%expect_test "on_display for updating a state" =
   Handle.show handle;
   [%expect {| (2 (2)) |}]
 ;;
+
+module%test Before_display = struct
+  let%expect_test "before_display" =
+    let component graph =
+      let state, set_state = Bonsai.state 0 graph in
+      let update =
+        let%map state and set_state in
+        set_state (state + 1)
+      in
+      let () = Bonsai.Edge.before_display update graph in
+      state
+    in
+    let handle = Handle.create (Result_spec.sexp (module Int)) component in
+    Handle.show handle;
+    [%expect {| 1 |}];
+    Handle.show handle;
+    [%expect {| 2 |}];
+    Handle.show handle;
+    [%expect {| 3 |}];
+    Handle.show handle;
+    [%expect {| 4 |}]
+  ;;
+
+  let%expect_test "before_display for updating a state" =
+    let component input graph =
+      let state, set_state = Bonsai.state_opt graph in
+      let update =
+        match%sub state with
+        | None ->
+          let%map set_state and input in
+          Some (set_state (Some input))
+        | Some state ->
+          let%map state and set_state and input in
+          if Int.equal state input then None else Some (set_state (Some input))
+      in
+      let () = Bonsai.Edge.before_display' update graph in
+      Bonsai.both input state
+    in
+    let var = Bonsai.Expert.Var.create 1 in
+    let handle =
+      Handle.create
+        (Result_spec.sexp
+           (module struct
+             type t = int * int option [@@deriving sexp_of]
+           end))
+        (component (Bonsai.Expert.Var.value var))
+    in
+    Handle.show handle;
+    [%expect {| (1 (1)) |}];
+    Handle.show handle;
+    [%expect {| (1 (1)) |}];
+    Handle.show handle;
+    [%expect {| (1 (1)) |}];
+    Bonsai.Expert.Var.set var 2;
+    Handle.show handle;
+    [%expect {| (2 (2)) |}];
+    Handle.show handle;
+    [%expect {| (2 (2)) |}];
+    Handle.show handle;
+    [%expect {| (2 (2)) |}]
+  ;;
+
+  let%expect_test "before_displays can't loop forever by changing in an on_change" =
+    let component graph =
+      let state, set_state = Bonsai.state' 0 graph in
+      let update msg =
+        let%arr set_state in
+        let%bind.Effect () = Effect.print_s [%message msg] in
+        set_state (fun state -> state + 1)
+      in
+      (* add 1 every frame *)
+      let () = Bonsai.Edge.lifecycle ~before_display:(update "lifecycle_1") graph in
+      (* add 1 every time the state changes *)
+      let () =
+        Bonsai.Edge.on_change
+          state
+          ~equal:[%equal: int]
+          ~trigger:`Before_display
+          ~callback:
+            (let%arr update = update "on_change" in
+             fun _ -> update)
+          graph
+      in
+      (* add 1 every frame again to show ordering *)
+      let () = Bonsai.Edge.lifecycle ~before_display:(update "lifecycle_2") graph in
+      state
+    in
+    let handle = Handle.create (Result_spec.sexp (module Int)) component in
+    Handle.show handle;
+    [%expect
+      {|
+      lifecycle_1
+      on_change
+      lifecycle_2
+      3
+      |}];
+    Handle.show handle;
+    [%expect
+      {|
+      lifecycle_1
+      on_change
+      lifecycle_2
+      6
+      |}];
+    Handle.show handle;
+    [%expect
+      {|
+      lifecycle_1
+      on_change
+      lifecycle_2
+      9
+      |}]
+  ;;
+
+  let%expect_test "before_displays can't loop forever by switching between branches" =
+    let component graph =
+      let state, set_state = Bonsai.state false graph in
+      match%sub state with
+      | false ->
+        Bonsai.Edge.lifecycle
+          ~on_activate:(Bonsai.return (Effect.print_s [%message "changed to false"]))
+          ~before_display:
+            (let%arr set_state in
+             let%bind.Effect () = Effect.print_s [%message "about to display false"] in
+             set_state true)
+          graph;
+        state
+      | true ->
+        Bonsai.Edge.lifecycle
+          ~on_activate:(Bonsai.return (Effect.print_s [%message "changed to true"]))
+          ~before_display:
+            (let%arr set_state in
+             let%bind.Effect () = Effect.print_s [%message "about to display true"] in
+             set_state false)
+          graph;
+        state
+    in
+    let handle = Handle.create (Result_spec.sexp (module Bool)) component in
+    Handle.show handle;
+    [%expect
+      {|
+      "about to display false"
+      "about to display true"
+      "changed to false"
+      false
+      |}];
+    Handle.show handle;
+    [%expect
+      {|
+      "about to display false"
+      "about to display true"
+      false
+      |}];
+    Handle.show handle;
+    [%expect
+      {|
+      "about to display false"
+      "about to display true"
+      false
+      |}]
+  ;;
+
+  let%expect_test "nested before_displays aren't skipped" =
+    let component graph =
+      let state, set_state = Bonsai.state false graph in
+      match%sub state with
+      | false ->
+        Bonsai.Edge.lifecycle
+          ~on_activate:(Bonsai.return (Effect.print_s [%message "changed to false"]))
+          ~before_display:
+            (let%arr set_state in
+             let%bind.Effect () = Effect.print_s [%message "about to display false"] in
+             set_state true)
+          graph;
+        state
+      | true ->
+        Bonsai.Edge.lifecycle
+          ~on_activate:(Bonsai.return (Effect.print_s [%message "changed to true"]))
+          ~before_display:
+            (Bonsai.return (Effect.print_s [%message "about to display true"]))
+          ~after_display:
+            (let%arr set_state in
+             set_state false)
+          graph;
+        state
+    in
+    let handle = Handle.create (Result_spec.sexp (module Bool)) component in
+    Handle.show handle;
+    [%expect
+      {|
+      "about to display false"
+      "about to display true"
+      "changed to true"
+      true
+      |}];
+    Handle.show handle;
+    [%expect
+      {|
+      "about to display false"
+      "about to display true"
+      true
+      |}];
+    Handle.show handle;
+    [%expect
+      {|
+      "about to display false"
+      "about to display true"
+      true
+      |}]
+  ;;
+end
 
 let%expect_test "path" =
   let component graph =
@@ -5911,7 +6122,10 @@ let%expect_test "constant_folding on assoc containing a lifecycle that depends o
                 value (
                   Mapn (
                     inputs (
-                      (Mapn (inputs ((Named (uid (Test 3)))))) Constant Constant))))))
+                      (Mapn (inputs ((Named (uid (Test 3))))))
+                      Constant
+                      Constant
+                      Constant))))))
             (via (Test 4))
             (into (
               Sub
@@ -6090,6 +6304,7 @@ let%expect_test "Handle.show lifecycle" =
       Bonsai.Edge.lifecycle
         ~on_activate:(effect "activate" "a")
         ~on_deactivate:(effect "deactivate" "a")
+        ~before_display:(effect "before-display" "a")
         ~after_display:(effect "after-display" "a")
         graph;
       rendered)
@@ -6097,6 +6312,7 @@ let%expect_test "Handle.show lifecycle" =
       Bonsai.Edge.lifecycle
         ~on_activate:(effect "activate" "b")
         ~on_deactivate:(effect "deactivate" "b")
+        ~before_display:(effect "before-display" "b")
         ~after_display:(effect "after-display" "b")
         graph;
       rendered)
@@ -6110,6 +6326,7 @@ let%expect_test "Handle.show lifecycle" =
   Handle.show handle;
   [%expect
     {|
+    ((action before-display) (on a))
     ((action activate) (on a))
     ((action after-display) (on a))
     |}];
@@ -6117,6 +6334,7 @@ let%expect_test "Handle.show lifecycle" =
   Handle.show handle;
   [%expect
     {|
+    ((action before-display) (on b))
     ((action deactivate) (on a))
     ((action activate) (on b))
     ((action after-display) (on b))
@@ -6125,6 +6343,7 @@ let%expect_test "Handle.show lifecycle" =
   Handle.show handle;
   [%expect
     {|
+    ((action before-display) (on a))
     ((action deactivate) (on b))
     ((action activate) (on a))
     ((action after-display) (on a))
@@ -6142,6 +6361,7 @@ let%expect_test "Handle.show_into_string lifecycle" =
       Bonsai.Edge.lifecycle
         ~on_activate:(effect "activate" "a")
         ~on_deactivate:(effect "deactivate" "a")
+        ~before_display:(effect "before-display" "a")
         ~after_display:(effect "after-display" "a")
         graph;
       rendered)
@@ -6149,6 +6369,7 @@ let%expect_test "Handle.show_into_string lifecycle" =
       Bonsai.Edge.lifecycle
         ~on_activate:(effect "activate" "b")
         ~on_deactivate:(effect "deactivate" "b")
+        ~before_display:(effect "before-display" "b")
         ~after_display:(effect "after-display" "b")
         graph;
       rendered)
@@ -6162,6 +6383,7 @@ let%expect_test "Handle.show_into_string lifecycle" =
   Handle.show_into_string handle |> print_endline;
   [%expect
     {|
+    ((action before-display) (on a))
     ((action activate) (on a))
     ((action after-display) (on a))
     |}];
@@ -6169,6 +6391,7 @@ let%expect_test "Handle.show_into_string lifecycle" =
   Handle.show_into_string handle |> print_endline;
   [%expect
     {|
+    ((action before-display) (on b))
     ((action deactivate) (on a))
     ((action activate) (on b))
     ((action after-display) (on b))
@@ -6177,6 +6400,7 @@ let%expect_test "Handle.show_into_string lifecycle" =
   Handle.show_into_string handle |> print_endline;
   [%expect
     {|
+    ((action before-display) (on a))
     ((action deactivate) (on b))
     ((action activate) (on a))
     ((action after-display) (on a))
