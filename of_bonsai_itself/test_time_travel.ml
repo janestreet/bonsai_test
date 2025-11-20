@@ -167,7 +167,7 @@ let%expect_test "now - kind of weird" =
   let handle =
     Handle.create
       (Result_spec.sexp (module Time_ns.Alternate_sexp))
-      (fun (local_ graph) -> Bonsai.Clock.now graph)
+      (fun (local_ graph) -> Bonsai.Clock.Expert.now graph)
   in
   let go n =
     Handle.advance_clock handle ~to_:(seconds n);

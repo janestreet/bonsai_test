@@ -12,8 +12,8 @@ struct
     let path_check =
       if inverted
       then (
-        (* We register 2 paths to confirm that multiple components inside are assigned the same
-       path, not just the first component within. *)
+        (* We register 2 paths to confirm that multiple components inside are assigned the
+           same path, not just the first component within. *)
         let trim s = String.sub s ~pos:0 ~len:(String.length s - 1) in
         let%arr path1 = Bonsai.path_id graph
         and path2 = Bonsai.path_id graph in
@@ -28,9 +28,9 @@ struct
                 (path2 : string)])
       else
         (* [with_inverted_lifecycle_ordering] acts as a "boundary" on balancing a chain of
-           subs into a tree, so we can be confident about the relative values of paths within
-           a [with_inverted_lifecycle_ordering] call. This is not the same for the "normal"
-           case. *)
+           subs into a tree, so we can be confident about the relative values of paths
+           within a [with_inverted_lifecycle_ordering] call. This is not the same for the
+           "normal" case. *)
         return (Or_error.return ())
     in
     Bonsai.Edge.lifecycle
@@ -161,8 +161,8 @@ struct
             |}]);
       Handle.do_actions handle [ false ];
       Handle.recompute_view handle;
-      (* Note that for inverted lifecycles, the "compute" on_deactivate runs first.
-         For e.g. portalled modals, this is important because it allows the [content]
+      (* Note that for inverted lifecycles, the "compute" on_deactivate runs first. For
+         e.g. portalled modals, this is important because it allows the [content]
          computation's cleanup to run before the modal is destroyed. *)
       expect_diff
         ~normal:(fun () ->
@@ -228,8 +228,8 @@ struct
             |}]);
       Handle.do_actions handle [ false ];
       Handle.recompute_view handle;
-      (* Note that for inverted lifecycles, the "compute" on_deactivate runs first.
-         For e.g. portalled modals, this is important because it allows the [content]
+      (* Note that for inverted lifecycles, the "compute" on_deactivate runs first. For
+         e.g. portalled modals, this is important because it allows the [content]
          computation's cleanup to run before the modal is destroyed. *)
       expect_diff
         ~normal:(fun () ->

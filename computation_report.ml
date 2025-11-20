@@ -271,8 +271,8 @@ module Interaction = struct
   ;;
 
   let run' ~get_inject ~computation ~initial ~interaction =
-    (* This has to happen in an inner loop, so that we get a fresh set of vars
-       for each run. *)
+    (* This has to happen in an inner loop, so that we get a fresh set of vars for each
+       run. *)
     let input = Input.create initial in
     let interactions = Interaction.finalize ~filter_profiles:true (interaction input) in
     run ~get_inject (computation (Input.value input)) interactions

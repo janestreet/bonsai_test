@@ -45,11 +45,10 @@ struct
     respond 1;
     [%expect {| ((query 0) (result (Finished 1))) |}];
     respond 2;
-    (* We call [recompute_view] after [respond 2] and before [respond 3] to
-       demonstrate that the effect being responded to doesn't begin until the
-       next time the state machine effects get run. This isn't necessarily
-       desirable behavior, but it is the way this computation works, so it's
-       worth showing in this test. *)
+    (* We call [recompute_view] after [respond 2] and before [respond 3] to demonstrate
+       that the effect being responded to doesn't begin until the next time the state
+       machine effects get run. This isn't necessarily desirable behavior, but it is the
+       way this computation works, so it's worth showing in this test. *)
     Handle.recompute_view handle;
     [%expect {| |}];
     respond 3;
@@ -148,7 +147,7 @@ let%expect_test {| Effect_throttling.poll deactivation |} =
     ((query 0) (result Aborted))
     ((query 1) (result Aborted))
     |}];
-  (* The actions [ 3; 4; 5 ] are associated with the [false] branch*)
+  (* The actions [ 3; 4; 5 ] are associated with the [false] branch *)
   Handle.do_actions handle [ 3; 4; 5 ];
   Handle.recompute_view handle;
   [%expect {| ((query 4) (result Aborted)) |}];

@@ -95,7 +95,7 @@ module%test Dynamic_cutoff = struct
            set_value 3;
            set_equal new_equal_function;
            print ();
-           print () (* print twice so that it matches with [`set_equal_first]*)
+           print () (* print twice so that it matches with [`set_equal_first] *)
          | `set_value_first ->
            set_value 3;
            print ();
@@ -637,7 +637,7 @@ module%test [@name "computation watcher"] _ = struct
         (enable_computation_watcher ~watcher_queue component)
     in
     (* This is to be expected since this logs whenever the value is regenerated, which
-         includes the first time *)
+       includes the first time *)
     log_queue watcher_queue;
     [%expect
       {|
@@ -708,7 +708,7 @@ module%test [@name "computation watcher"] _ = struct
         (enable_computation_watcher ~watcher_queue component)
     in
     (* This is to be expected since this logs whenever the value is regenerated, which
-         includes the first time *)
+       includes the first time *)
     log_queue watcher_queue;
     [%expect
       {|
@@ -763,7 +763,7 @@ module%test [@name "computation watcher"] _ = struct
         (enable_computation_watcher ~watcher_queue component)
     in
     (* This is to be expected since this logs whenever the value is regenerated, which
-         includes the first time *)
+       includes the first time *)
     log_queue watcher_queue;
     [%expect
       {|
@@ -825,7 +825,7 @@ module%test [@name "computation watcher"] _ = struct
     Handle.show handle;
     log_queue watcher_queue;
     (* Every update to `A should only print ONE entry. This should also show the
-         [Depended on at] line *)
+       [Depended on at] line *)
     [%expect
       {|
       --------------------------------
@@ -1068,7 +1068,7 @@ module%test [@name "computation watcher"] _ = struct
         (enable_computation_watcher ~watcher_queue component)
     in
     (* This is to be expected since this logs whenever the value is regenerated, which
-         includes the first time *)
+       includes the first time *)
     log_queue watcher_queue;
     [%expect
       {|
@@ -1160,7 +1160,7 @@ module%test [@name "computation watcher"] _ = struct
         (enable_computation_watcher ~watcher_queue component)
     in
     (* This is to be expected since this logs whenever the value is regenerated, which
-         includes the first time *)
+       includes the first time *)
     log_queue watcher_queue;
     [%expect
       {|
@@ -1249,7 +1249,7 @@ module%test [@name "computation watcher"] _ = struct
         (enable_computation_watcher ~watcher_queue component)
     in
     (* This is to be expected since this logs whenever the value is regenerated, which
-         includes the first time *)
+       includes the first time *)
     log_queue watcher_queue;
     [%expect
       {|
@@ -1548,8 +1548,8 @@ module%test [@name "computation watcher"] _ = struct
     [%expect {| |}];
     Handle.do_actions handle [ `A 1 ];
     Handle.show handle;
-    (* This is the outer computation watcher. This one has all of the values set to
-         false and should not log anything other than the fact that a state machine updated *)
+    (* This is the outer computation watcher. This one has all of the values set to false
+       and should not log anything other than the fact that a state machine updated *)
     log_queue watcher_queue;
     [%expect
       {|
@@ -1640,7 +1640,7 @@ module%test [@name "computation watcher"] _ = struct
     Handle.do_actions handle [ `A 1 ];
     Handle.show handle;
     (* This is the outer computation watcher. This one has all of the values set to true
-         and should cause the inner one to log everything including the action*)
+       and should cause the inner one to log everything including the action *)
     log_queue watcher_queue;
     [%expect
       {|
@@ -2175,7 +2175,7 @@ module%test [@name "computation watcher"] _ = struct
     Handle.do_actions handle [ `B 100 ];
     Handle.show handle;
     (* The value after should be 102 since we set the input_var to 2 and now we're setting
-         the state to 100
+       the state to 100
     *)
     log_queue watcher_queue;
     [%expect
@@ -2717,7 +2717,7 @@ module%test [@name "computation watcher"] _ = struct
     Handle.show handle;
     log_queue watcher_queue;
     (* This is expected as we set a value that was created within the computation and
-         depended on there *)
+       depended on there *)
     [%expect
       {|
       --------------------------------
@@ -3136,13 +3136,13 @@ let%expect_test "Cutoff set by let%arr ppx should not be applied to different \
 let%expect_test "Cutoff propragates on named values regression" =
   (* This test tests against a regression on [cutoff].
 
-     Since named values are evaled into a map, and
-     [Value.cutoff] compiled to the mutable [Incremental.set_cutoff], everytime
-     that set_cutoff happens it affects all occurrences of the named value.
+     Since named values are evaled into a map, and [Value.cutoff] compiled to the mutable
+     [Incremental.set_cutoff], everytime that set_cutoff happens it affects all
+     occurrences of the named value.
 
-     This is tested for here by giving the same named value node different
-     cutoff functions (one for the left element and another for the second element)
-     and showcasing that each node is not affected by the other cutoff node.
+     This is tested for here by giving the same named value node different cutoff
+     functions (one for the left element and another for the second element) and
+     showcasing that each node is not affected by the other cutoff node.
   *)
   let var = Bonsai.Expert.Var.create (0, 0) in
   let value = Bonsai.Expert.Var.value var in
@@ -3183,8 +3183,7 @@ let%expect_test "Cutoff propragates on named values regression" =
   Handle.show handle;
   [%expect {| (1 0) |}];
   Bonsai.Expert.Var.set var (1, 2);
-  (* When the second element changes, this is fine since its cutoff function
-     won.*)
+  (* When the second element changes, this is fine since its cutoff function won. *)
   Handle.show handle;
   [%expect {| (1 2) |}]
 ;;
@@ -3607,8 +3606,8 @@ let%expect_test "path" =
   in
   let handle = Handle.create (Result_spec.sexp (module Sexp)) component in
   Handle.show handle;
-  (* The first of these "Subst_from" is actually a component that is
-     added by the testing helpers. *)
+  (* The first of these "Subst_from" is actually a component that is added by the testing
+     helpers. *)
   [%expect {| () |}]
 ;;
 
@@ -3740,11 +3739,11 @@ let%expect_test "constant folded assoc path" =
       (return (Int.Map.of_alist_exn [ -1, (); 1, () ]))
       graph
       ~f:(fun _ _ graph ->
-        (* NOTE: Since this test case uses both a constant map and previously
-           only made use of the path, then this combination resulted in the optimization
-           that makes a call to Map.mapi directly to trigger. To avoid this, we
-           artifically introduce some state, and more importantly, use the state trivially
-           such that the simplication optimization is not triggered. *)
+        (* NOTE: Since this test case uses both a constant map and previously only made
+           use of the path, then this combination resulted in the optimization that makes
+           a call to Map.mapi directly to trigger. To avoid this, we artifically introduce
+           some state, and more importantly, use the state trivially such that the
+           simplication optimization is not triggered. *)
         let x, _ = Bonsai.state 0 graph in
         let path = Bonsai.path graph in
         let%sub path, _ =
@@ -5764,8 +5763,8 @@ module%test [@name "inactive delivery"] _ = struct
       [%expect {| ((0 3) (1 5) (2 3)) |}];
       reset ();
       Handle.recompute_view handle;
-      (* notice that there are two printings of 'resetting' because even though
-             there's three active components, there are only two models between them *)
+      (* notice that there are two printings of 'resetting' because even though there's
+         three active components, there are only two models between them *)
       [%expect
         {|
         resetting
@@ -5861,7 +5860,7 @@ module%test [@name "inactive delivery"] _ = struct
     Bonsai.Expert.Var.set var (Int.Map.of_alist_exn [ 1, () ]);
     Handle.show handle;
     (* 2 is no longer in the input map, so setting it should fail, even though its model
-         is still in the model map *)
+       is still in the model map *)
     set_two 4;
     Handle.show handle;
     (* 1 is still in the input map, however, so it can be set *)
@@ -5885,7 +5884,7 @@ end
 
 module%test [@name "testing Bonsai internals"] _ = struct
   (* This module tests internal details of Bonsai, and the results are sensitive to
-       implementation changes. *)
+     implementation changes. *)
   [@@@alert "-rampantly_nondeterministic"]
 
   let%expect_test "remove unused models in assoc" =
@@ -6038,8 +6037,8 @@ let%expect_test "ignored result of assoc" =
         (Bonsai.Expert.Var.value var)
         graph
         ~f:(fun _key data graph ->
-          (* this sub is here to make sure that bonsai doesn't
-             optimize the component into an "assoc_simple" *)
+          (* this sub is here to make sure that bonsai doesn't optimize the component into
+             an "assoc_simple" *)
           let (_ : _) = Bonsai.state () graph in
           data)
     in
@@ -6738,7 +6737,7 @@ module%test Clock_every = struct
       after paint: 00:00:13.000000000Z
       |}];
     (* Triggers at 7s (initial) + 3s (first tick) + 0.2s (time taken by first tick) + 3s
-         (time after first click)*)
+       (time after first click) *)
     move_forward_and_show
       ~after_show:(fun () -> advance_and_clear_svar ~handle ~svar 0.2)
       0.2;
@@ -6825,8 +6824,8 @@ module%test Clock_every = struct
       after paint: 00:00:10.200000000Z
       |}];
     (* Triggers at 7s + 6.0s unlike the
-         `Wait_period_after_previous_effect_finishes_blocking version of this
-         which would need to wait until 7s + 6.2s. *)
+       `Wait_period_after_previous_effect_finishes_blocking version of this which would
+       need to wait until 7s + 6.2s. *)
     move_forward_and_show
       ~after_show:(fun () -> advance_and_clear_svar ~handle ~svar 0.2)
       2.8;
@@ -6839,7 +6838,7 @@ module%test Clock_every = struct
       after paint: 00:00:13.200000000Z
       |}];
     (* The next trigger will take a long time, 10 seconds! There will be a couple of
-         missed [ticks] and missed [tocks]. *)
+       missed [ticks] and missed [tocks]. *)
     move_forward_and_show 3.0;
     [%expect
       {|
@@ -6880,7 +6879,7 @@ module%test Clock_every = struct
     fill_and_reset_svar ~svar;
     [%expect {| [tock] - effect ended |}];
     (* Time moves slightly forward which results in another trigger. (hence the
-         `Wait_period_after_previous_effect_starts_blocking behavior on skips. )*)
+       `Wait_period_after_previous_effect_starts_blocking behavior on skips. ) *)
     move_forward_and_show
       ~after_show:(fun () -> advance_and_clear_svar ~handle ~svar 0.2)
       0.01;
@@ -6893,7 +6892,7 @@ module%test Clock_every = struct
       after paint: 00:00:26.410000000Z
       |}];
     (* Next expected trigger is at 7s + 19.21s + 3s, so going to 7s + 22.11s should not
-         trigger. *)
+       trigger. *)
     move_forward_and_show 2.7;
     [%expect
       {|
@@ -6901,7 +6900,7 @@ module%test Clock_every = struct
       after:  00:00:29.110000000Z
       after paint: 00:00:29.110000000Z
       |}];
-    (* Trigger occurs at 7s + 22.21s as expected! 1*)
+    (* Trigger occurs at 7s + 22.21s as expected! 1 *)
     move_forward_and_show
       ~after_show:(fun () -> advance_and_clear_svar ~handle ~svar 0.2)
       0.1;
@@ -6918,9 +6917,9 @@ module%test Clock_every = struct
   module%test
     [@name "Resilience against bugs from action time being equal to span time"] _ =
   struct
-    (* This test is the only one that initially presented a race condition. Although
-           the other kinds of clocks' implementations did not have a race condition when first implemented,
-           they are still tested in this module.*)
+    (* This test is the only one that initially presented a race condition. Although the
+       other kinds of clocks' implementations did not have a race condition when first
+       implemented, they are still tested in this module. *)
     let%expect_test _ =
       let svar = ref (Effect.For_testing.Svar.create ()) in
       let handle =
@@ -7106,9 +7105,9 @@ module%test Clock_every = struct
       after:  00:00:08.000000000Z
       after paint: 00:00:08.000000000Z
       |}];
-    (* `Every_multiple_of_period_blocking clock triggers on every t where [(t % span) = (init_time % span)]
-         Since initial time is 7s, the clock will trigger on every multiple of 3,
-         but offset by 1, so on 10s, 13s, 15s independent of skips.
+    (* `Every_multiple_of_period_blocking clock triggers on every t where
+       [(t % span) = (init_time % span)] Since initial time is 7s, the clock will trigger
+       on every multiple of 3, but offset by 1, so on 10s, 13s, 15s independent of skips.
     *)
     move_forward_and_show
       ~after_show:(fun () -> advance_and_clear_svar ~handle ~svar 0.2)
@@ -7224,9 +7223,9 @@ module%test Clock_every = struct
       after:  00:00:08.000000000Z
       after paint: 00:00:08.000000000Z
       |}];
-    (* `Every_multiple_of_period_blocking clock triggers on every t where [(t % span) = (init_time % span)]
-         Since initial time is 7s, the clock will trigger on every multiple of 3,
-         but offset by 1, so on 10s, 13s, 15s independent of skips.
+    (* `Every_multiple_of_period_blocking clock triggers on every t where
+       [(t % span) = (init_time % span)] Since initial time is 7s, the clock will trigger
+       on every multiple of 3, but offset by 1, so on 10s, 13s, 15s independent of skips.
     *)
     move_forward_and_show
       ~after_show:(fun () -> advance_and_clear_svar ~handle ~svar 0.2)
@@ -7444,8 +7443,8 @@ module%test Clock_every = struct
           let start = Time_ns.of_span_since_epoch (Time_ns.Span.of_min 1.0) in
           let handle = Handle.create Result_spec.invisible ~start_time:start component in
           let move_forward_and_show = move_forward_and_show ~handle in
-          (* The [move_forward_and_show] bits are required to trigger the clock
-                 effects, even on activate. *)
+          (* The [move_forward_and_show] bits are required to trigger the clock effects,
+             even on activate. *)
           move_forward_and_show 0.1;
           [%expect
             {|
@@ -7514,7 +7513,7 @@ module%test Clock_every = struct
             after:  00:01:01.000000000Z
             after paint: 00:01:01.000000000Z
             |}];
-          (* The time is 1:01 and the clock becomes inactive*)
+          (* The time is 1:01 and the clock becomes inactive *)
           Bonsai.Expert.Var.set active false;
           Handle.recompute_view handle;
           move_forward_and_show 1.0;
@@ -7573,7 +7572,7 @@ module%test Clock_every = struct
             after:  00:01:01.000000000Z
             after paint: 00:01:01.000000000Z
             |}];
-          (* The time is 1:01 and the clock becomes inactive*)
+          (* The time is 1:01 and the clock becomes inactive *)
           Bonsai.Expert.Var.set active false;
           Handle.recompute_view handle;
           move_forward_and_show 3.0;
@@ -7583,13 +7582,13 @@ module%test Clock_every = struct
             after:  00:01:04.000000000Z
             after paint: 00:01:04.000000000Z
             |}];
-          (* The time is 1:04 and the clock becomes active again. The effect at 1:03
-                 does not run. *)
+          (* The time is 1:04 and the clock becomes active again. The effect at 1:03 does
+             not run. *)
           Bonsai.Expert.Var.set active true;
           Handle.recompute_view handle;
           move_forward_and_show 2.0;
-          (* Now it becomes 1:06. The original activation time was 1:00 with a span of
-                 3 seconds. Therefore the timer triggers at 1:06. *)
+          (* Now it becomes 1:06. The original activation time was 1:00 with a span of 3
+             seconds. Therefore the timer triggers at 1:06. *)
           [%expect
             {|
             before: 00:01:04.000000000Z
@@ -7598,8 +7597,8 @@ module%test Clock_every = struct
             after paint: 00:01:06.000000000Z
             |}];
           move_forward_and_show 1.0;
-          (* Now it becomes 1:07, 3 seconds after it was re-activated. The effect does
-                 not run. It will run again at 1:09. *)
+          (* Now it becomes 1:07, 3 seconds after it was re-activated. The effect does not
+             run. It will run again at 1:09. *)
           [%expect
             {|
             before: 00:01:06.000000000Z
@@ -7700,7 +7699,8 @@ module%test Clock_every = struct
             printf "after:  ";
             print_time handle;
             Handle.show handle;
-            (* Advancing the clock by one second (many time the clock's time span) before recomputing.  *)
+            (* Advancing the clock by one second (many time the clock's time span) before
+               recomputing. *)
             Handle.advance_clock_by handle (Time_ns.Span.of_sec 1.0);
             Handle.recompute_view handle;
             after_show ();
@@ -7799,8 +7799,8 @@ module%test Clock_every = struct
         after:  00:00:07.020000000Z
         after paint: 00:00:07.020000000Z
         |}];
-      (* Triggers at 7s (initial) + 0.01s (first tick) + 0.002s (time taken by first tick) + 0.001s
-             (time after first click)*)
+      (* Triggers at 7s (initial) + 0.01s (first tick) + 0.002s (time taken by first
+         tick) + 0.001s (time after first click) *)
       move_forward_and_show
         ~after_show:(fun () -> advance_and_clear_svar ~handle ~svar 0.002)
         0.002;
@@ -7845,8 +7845,8 @@ module%test Clock_every = struct
         [tock] - effect ended
         after paint: 00:00:07.012000000Z
         |}];
-      (* Triggers at 7s + 2 * 0.01s unlike the "minimum" version of this which would need to wait
-             until 7s + 2 * 0.01s + 0.002s. *)
+      (* Triggers at 7s + 2 * 0.01s unlike the "minimum" version of this which would need
+         to wait until 7s + 2 * 0.01s + 0.002s. *)
       move_forward_and_show
         ~after_show:(fun () -> advance_and_clear_svar ~handle ~svar 0.002)
         0.008;
@@ -7859,7 +7859,7 @@ module%test Clock_every = struct
         after paint: 00:00:07.022000000Z
         |}];
       (* The next trigger will take a long time, 10 seconds! There will be a couple of
-             missed [ticks] and missed [tocks]. *)
+         missed [ticks] and missed [tocks]. *)
       move_forward_and_show
         ~after_show:(fun () -> advance_and_clear_svar ~handle ~svar 10.)
         0.008;
@@ -7872,7 +7872,7 @@ module%test Clock_every = struct
         after paint: 00:00:17.030000000Z
         |}];
       (* Time moves slightly forward which results in another trigger. (hence the
-             `Wait_period_after_previous_effect_starts_blocking behavior on skips. )*)
+         `Wait_period_after_previous_effect_starts_blocking behavior on skips. ) *)
       move_forward_and_show
         ~after_show:(fun () -> advance_and_clear_svar ~handle ~svar 0.002)
         0.00001;
@@ -7924,9 +7924,9 @@ module%test Clock_every = struct
         after:  00:00:07.005000000Z
         after paint: 00:00:07.005000000Z
         |}];
-      (* Clock triggers on every t where [(t % span) = (init_time % span)]
-             Since initial time is 7s, the clock will trigger on every multiple of 3,
-             but offset by 1, so on 10s, 13s, 16s independent of skips.  *)
+      (* Clock triggers on every t where [(t % span) = (init_time % span)] Since initial
+         time is 7s, the clock will trigger on every multiple of 3, but offset by 1, so on
+         10s, 13s, 16s independent of skips. *)
       move_forward_and_show
         ~after_show:(fun () -> advance_and_clear_svar ~handle ~svar 0.002)
         0.005;
@@ -8414,8 +8414,7 @@ let edge_poll_shared ~get_expect_output =
       component
   in
   let trigger_display () =
-    (* Polling is driven by [on_display] callbacks, which is triggered by
-       [Handle.show] *)
+    (* Polling is driven by [on_display] callbacks, which is triggered by [Handle.show] *)
     Handle.show handle;
     let pending = Query_response_tracker.queries_pending_response effect_tracker in
     let output =
@@ -8450,8 +8449,7 @@ let%expect_test "Edge.poll in order" =
   [%expect {| ((pending ()) (output (WORLD))) |}]
 ;;
 
-(* When completing the requests out-of-order, the last-fired effect still
-   wins *)
+(* When completing the requests out-of-order, the last-fired effect still wins *)
 let%expect_test "Edge.poll out of order" =
   let get_expect_output () = [%expect.output] in
   let var, effect_tracker, trigger_display = edge_poll_shared ~get_expect_output in
@@ -8485,7 +8483,7 @@ let%expect_test "Edge.poll out of order" =
 ;;
 
 let%expect_test "Clock.now" =
-  let component = Bonsai.Clock.now in
+  let component = Bonsai.Clock.Expert.now in
   let handle =
     Handle.create (Result_spec.sexp (module Time_ns.Alternate_sexp)) component
   in
@@ -9300,8 +9298,8 @@ let%expect_test "portal" =
       graph
   in
   let handle = Handle.create (Result_spec.sexp (module Unit)) component in
-  (* this is only necessary because I use on_change, which uses after-display.
-     In an action-handler, the actions would be scheduled on the same frame. *)
+  (* this is only necessary because I use on_change, which uses after-display. In an
+     action-handler, the actions would be scheduled on the same frame. *)
   Handle.recompute_view_until_stable handle;
   [%expect {| hello |}];
   Bonsai.Expert.Var.set var (Sexp.Atom "world");
@@ -9465,9 +9463,9 @@ let%expect_test "evaluation of pure values under a match%sub" =
     | false -> return (-1)
   in
   let handle = Handle.create (Result_spec.sexp (module Int)) component in
-  (* In the past, even though [determines_use] is false in this and other cases, work
-     was performed unnecessarily.  This is no longer true, but we keep this
-     around as a regression test *)
+  (* In the past, even though [determines_use] is false in this and other cases, work was
+     performed unnecessarily. This is no longer true, but we keep this around as a
+     regression test *)
   Handle.show handle;
   [%expect
     {|
@@ -9831,12 +9829,11 @@ let%expect_test "action dropped in match%sub" =
         ~on_activate:
           (let%map inject and set_x in
            let%bind.Effect () = set_x false in
-           (* This call to [inject] below successfully schedules the effect,
-              but the effect never gets run because the effect that
-              just got executed switched which branch of the [match%sub] was
-              active, thus making it impossible to run the [apply_action]
-              function of the [state_machine1]. A similar component that uses
-              [state_machine0] would not have this problem. *)
+           (* This call to [inject] below successfully schedules the effect, but the
+              effect never gets run because the effect that just got executed switched
+              which branch of the [match%sub] was active, thus making it impossible to run
+              the [apply_action] function of the [state_machine1]. A similar component
+              that uses [state_machine0] would not have this problem. *)
            inject ());
       return ()
     | false -> return ()
@@ -9937,13 +9934,12 @@ let%expect_test "let%arr cutoff destruction" =
 ;;
 
 module%test [@name "regression"] _ = struct
-  (* The regression in question is caused by calling [Value.both] on a dynamic
-       [Value.Map] and a constant one. Instead of returning a [Value.Both] node, we'd
-       return a [Value.Fast_map], where the constant value is added to the tuple inside
-       the folded mapping function.  However, when the mapping function that we're folding
-       into is used for getting better cutoff behavior, this "optimization" actually
-       undoes it by introducing a fresly-allocated tuple which will not cutoff correctly
-       anymore. *)
+  (* The regression in question is caused by calling [Value.both] on a dynamic [Value.Map]
+     and a constant one. Instead of returning a [Value.Both] node, we'd return a
+     [Value.Fast_map], where the constant value is added to the tuple inside the folded
+     mapping function. However, when the mapping function that we're folding into is used
+     for getting better cutoff behavior, this "optimization" actually undoes it by
+     introducing a fresly-allocated tuple which will not cutoff correctly anymore. *)
   module State = struct
     type t =
       { a : int
@@ -10093,8 +10089,8 @@ let%expect_test "value_with_override in resetter" =
 ;;
 
 let%expect_test "ordering behavior of skeleton traversal" =
-  (* NOTE: This test just showcases current traversal order behavior in case it
-     were to change/matter in the future. *)
+  (* NOTE: This test just showcases current traversal order behavior in case it were to
+     change/matter in the future. *)
   let c graph =
     let all_values =
       [ return ()
@@ -10490,8 +10486,8 @@ module%test [@name "Action delivery paths"] _ = struct
       {| ("Processed action" (action (Sub_from (Sub_into (Leaf_static <opaque>))))) |}];
     Handle.do_actions handle [ Four ];
     Handle.show handle;
-    (* Does not have a Sub_from, because nothing else is added to the graph after it,
-         so there's no continuation. *)
+    (* Does not have a Sub_from, because nothing else is added to the graph after it, so
+       there's no continuation. *)
     [%expect {| ("Processed action" (action (Sub_into (Leaf_dynamic <opaque>)))) |}]
   ;;
 
@@ -10665,8 +10661,8 @@ module%test [@name "Action delivery paths"] _ = struct
   ;;
 
   (* Note: Lazy doesn't have a branch point, so its use doesn't affect the action path,
-       but this test does demonstrate that action paths work as intended with lazy
-       components. *)
+     but this test does demonstrate that action paths work as intended with lazy
+     components. *)
   let%expect_test "Switch/Lazy" =
     let lazy_branch_var = Bonsai.Expert.Var.create false in
     let lazy_branch = Bonsai.Expert.Var.value lazy_branch_var in
@@ -10712,14 +10708,14 @@ module%test [@name "Action delivery paths"] _ = struct
     in
     Handle.print_actions handle;
     (* In this case, we should go through the first switch branch and not hit the lazy
-         case *)
+       case *)
     Handle.do_actions handle [ Inject ];
     Handle.show handle;
     [%expect {| ("Processed action" (action (Switch 0 (Leaf_static <opaque>)))) |}];
     Bonsai.Expert.Var.set lazy_branch_var true;
     Handle.recompute_view_until_stable handle;
-    (* And alternatively, in this case, we should go through the second branch and hit
-         the lazy case *)
+    (* And alternatively, in this case, we should go through the second branch and hit the
+       lazy case *)
     Handle.do_actions handle [ Inject ];
     Handle.show handle;
     [%expect {| ("Processed action" (action (Switch 1 (Lazy (Leaf_static <opaque>))))) |}]
@@ -10913,7 +10909,8 @@ let%expect_test "Bonsai.all does not reorder inputs" =
 ;;
 
 module%test [@name "computational shape"] _ = struct
-  (* This module tests internal details of Bonsai, and the results are sensitive to implementation changes. *)
+  (* This module tests internal details of Bonsai, and the results are sensitive to
+     implementation changes. *)
   [@@@alert "-rampantly_nondeterministic"]
 
   let%expect_test "long chain of models" =

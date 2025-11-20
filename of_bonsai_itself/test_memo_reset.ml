@@ -229,8 +229,8 @@ let%expect_test "If Memo changed via scope model, but not [lookup]s, [lookup]s r
     |}];
   Handle.do_actions handle [ `Set_queries [ "one", 1; "two", 2; "one_dup", 1 ] ];
   Handle.show handle;
-  (* We don't need to do a round-trip, because we have a result for "1" cached.
-     Our poller will stop polling for it one frame later. *)
+  (* We don't need to do a round-trip, because we have a result for "1" cached. Our poller
+     will stop polling for it one frame later. *)
   [%expect
     {|
     one: 1 -> -1

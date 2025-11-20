@@ -13,9 +13,9 @@ let sexp_of_computation c =
 
 let create c =
   (* Creating a test handle will apply optimizations _and_ perform an initial
-     stabilization, so in order to split these regions out, we can apply the
-     constant folding separately, and then remove its output from the beginning of
-     the handle creation output. *)
+     stabilization, so in order to split these regions out, we can apply the constant
+     folding separately, and then remove its output from the beginning of the handle
+     creation output. *)
   let during_optimization_output, optimized_shape, unoptimized_shape =
     let lowered = Private.top_level_handle c in
     let optimized = Private.Constant_fold.constant_fold lowered in

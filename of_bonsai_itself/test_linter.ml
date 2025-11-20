@@ -5,8 +5,8 @@ open Bonsai.Let_syntax
 open Bonsai.For_open
 module Private = Bonsai.Private
 
-(* Each test sets this ref to the location at which the test began, so that
-   test output can be made resilient to adding or remove lines above the test. *)
+(* Each test sets this ref to the location at which the test began, so that test output
+   can be made resilient to adding or remove lines above the test. *)
 let test_location_reference_point = ref [%here]
 let test_start here = test_location_reference_point := here
 

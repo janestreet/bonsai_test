@@ -1,11 +1,11 @@
 open! Core
 open! Import
 
-(* We need to fake the source-code position because this test is run in
-   two files with different names
+(* We need to fake the source-code position because this test is run in two files with
+   different names
 
-   In particular, we can't just use [print_s ~hide_positions:true] because that
-   only hides line and column numbers, but includes the file name. *)
+   In particular, we can't just use [print_s ~hide_positions:true] because that only hides
+   line and column numbers, but includes the file name. *)
 let dummy_source_code_position =
   Source_code_position.
     { pos_fname = "file_name.ml"; pos_lnum = 0; pos_bol = 0; pos_cnum = 0 }
@@ -128,8 +128,8 @@ let%expect_test "enum with action handling `Warn" =
     [%expect "counter 2"];
     H.do_actions
       [ Outer Increment
-        (* The inner action is ignored.  You can see this because it prints "counter 2"
-         when it gets focus again. *)
+        (* The inner action is ignored. You can see this because it prints "counter 2"
+           when it gets focus again. *)
       ; Inner Increment
       ];
     [%expect

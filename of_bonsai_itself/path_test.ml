@@ -14,8 +14,8 @@ let%expect_test "path" =
   in
   let handle = Handle.create (Result_spec.string (module String)) component in
   Handle.show handle;
-  (* The first of these "Subst_from" is actually a component that is
-     added by the testing helpers. *)
+  (* The first of these "Subst_from" is actually a component that is added by the testing
+     helpers. *)
   [%expect {| bonsai_path |}]
 ;;
 
@@ -27,8 +27,8 @@ let%expect_test "path constant folding" =
   in
   let handle = Handle.create (Result_spec.string (module String)) component in
   Handle.show handle;
-  (* The first of these "Subst_from" is actually a component that is
-     added by the testing helpers. *)
+  (* The first of these "Subst_from" is actually a component that is added by the testing
+     helpers. *)
   [%expect {| bonsai_path |}]
 ;;
 
@@ -209,7 +209,7 @@ module%test [@name "paths compare as expected"] _ = struct
     let a = append (append (append empty Subst_from) Subst_from) Subst_from in
     let b = append (append empty Subst_from) Subst_into_invert_lifecycles in
     print_s [%message (compare a b : int)];
-    (* We expect [a] > [b], so [1].*)
+    (* We expect [a] > [b], so [1]. *)
     [%expect {| ("compare a b" 1) |}];
     ()
   ;;

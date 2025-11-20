@@ -4,8 +4,8 @@ open Bonsai_test
 module Bonsai = Bonsai_proc
 open Bonsai.Let_syntax
 
-(* this test needs to be in its own file because the crash happens at runtime and will
-   end the incremental universe *)
+(* this test needs to be in its own file because the crash happens at runtime and will end
+   the incremental universe *)
 let%expect_test "store named in a ref" =
   let branch = Bonsai.Var.create false in
   let name_ref = ref None in
