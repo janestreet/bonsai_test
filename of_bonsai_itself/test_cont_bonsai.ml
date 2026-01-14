@@ -6181,7 +6181,12 @@ let%expect_test "on_display for updating a state (using on_change)" =
       Ui_effect.print_s [%message "change!" (prev : int option) (cur : int)])
   in
   let component input graph =
-    Bonsai.Edge.on_change' ~equal:[%equal: Int.t] ~callback input graph;
+    Bonsai.Edge.on_change'
+      ~trigger:`After_display
+      ~equal:[%equal: Int.t]
+      ~callback
+      input
+      graph;
     return ()
   in
   let var = Bonsai.Expert.Var.create 1 in
@@ -8191,6 +8196,66 @@ let%expect_test "wait_after_display works with [recompute_view_until_stable]" =
   [%expect {| view |}]
 ;;
 
+let%expect_test "wait_before_display" =
+  let component graph =
+    Bonsai.Edge.lifecycle
+      ~before_display:(Bonsai.return (Effect.print_s [%message "before_display"]))
+      ~after_display:(Bonsai.return (Effect.print_s [%message "after_display"]))
+      graph;
+    let wait_before_display = Bonsai.Edge.wait_before_display graph in
+    let wait_after_display = Bonsai.Edge.wait_after_display graph in
+    let%map wait_before_display and wait_after_display in
+    let%bind.Effect () = wait_before_display in
+    let%bind.Effect () = Effect.print_s [%message "waited for before_display 1"] in
+    let%bind.Effect () = wait_before_display in
+    let%bind.Effect () = Effect.print_s [%message "waited for before_display 2"] in
+    let%bind.Effect () = wait_after_display in
+    let%bind.Effect () = Effect.print_s [%message "waited for after_display"] in
+    let%bind.Effect () = wait_before_display in
+    Effect.print_s [%message "waited for before_display 3"]
+  in
+  let handle =
+    Handle.create
+      (module struct
+        type t = unit Effect.t
+        type incoming = unit
+
+        let view _t = ""
+        let incoming a () = a
+      end)
+      component
+  in
+  Handle.do_actions handle [ () ];
+  Handle.recompute_view handle;
+  [%expect
+    {|
+    before_display
+    "waited for before_display 1"
+    after_display
+    |}];
+  Handle.recompute_view handle;
+  [%expect
+    {|
+    before_display
+    "waited for before_display 2"
+    after_display
+    "waited for after_display"
+    |}];
+  Handle.recompute_view handle;
+  [%expect
+    {|
+    before_display
+    "waited for before_display 3"
+    after_display
+    |}];
+  Handle.recompute_view handle;
+  [%expect
+    {|
+    before_display
+    after_display
+    |}]
+;;
+
 let%expect_test "sleep" =
   let component graph =
     let sleep = Bonsai.Clock.sleep graph in
@@ -8539,9 +8604,24 @@ let chain_computation graph =
   let b, set_b = Bonsai.state " " graph in
   let c, set_c = Bonsai.state " " graph in
   let d, set_d = Bonsai.state " " graph in
-  Bonsai.Edge.on_change ~equal:equal_string ~callback:set_b a graph;
-  Bonsai.Edge.on_change ~equal:equal_string ~callback:set_c b graph;
-  Bonsai.Edge.on_change ~equal:equal_string ~callback:set_d c graph;
+  Bonsai.Edge.on_change
+    ~trigger:`After_display
+    ~equal:equal_string
+    ~callback:set_b
+    a
+    graph;
+  Bonsai.Edge.on_change
+    ~trigger:`After_display
+    ~equal:equal_string
+    ~callback:set_c
+    b
+    graph;
+  Bonsai.Edge.on_change
+    ~trigger:`After_display
+    ~equal:equal_string
+    ~callback:set_d
+    c
+    graph;
   Bonsai.Let_syntax.Let_syntax.map4 a b c d ~f:(sprintf "a:%s b:%s c:%s d:%s")
 ;;
 
@@ -8581,7 +8661,12 @@ let%expect_test "infinite chain!" =
       let%map set_state in
       fun new_state -> set_state (new_state + 1)
     in
-    Bonsai.Edge.on_change ~equal:[%equal: Int.t] ~callback state graph;
+    Bonsai.Edge.on_change
+      ~trigger:`After_display
+      ~equal:[%equal: Int.t]
+      ~callback
+      state
+      graph;
     Bonsai.return ()
   in
   let handle = Handle.create (Result_spec.string (module Unit)) computation in
@@ -9290,6 +9375,7 @@ let%expect_test "portal" =
     Bonsai_extra.Fixed_point.with_inject_fixed_point
       (fun inject graph ->
         Bonsai.Edge.on_change
+          ~trigger:`After_display
           ~equal:[%equal: Sexp.t]
           (Bonsai.Expert.Var.value var)
           ~callback:inject

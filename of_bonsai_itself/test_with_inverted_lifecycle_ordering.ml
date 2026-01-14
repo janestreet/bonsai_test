@@ -44,6 +44,7 @@ struct
          Effect.print_s [%message "on_deactivate" ~_:(name : string)])
       graph;
     Bonsai.Edge.on_change
+      ~trigger:`After_display
       ~equal:[%equal: unit Or_error.t]
       path_check
       ~callback:

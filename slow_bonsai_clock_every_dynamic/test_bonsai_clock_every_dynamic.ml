@@ -389,57 +389,60 @@ module%test Quickcheck = struct
     end
   end
 
-  let%quick_test (_ [@trials 1_000] [@remember_failures]) =
-    fun (actions : Action.t list) ->
-    bisimulate
-    @@ fun when_to_start_next_effect ->
-    let handle =
-      Handle.create (module Spec) (fun (local_ graph) ->
-        component ~when_to_start_next_effect graph)
+  let%expect_test _ =
+    let%quick_test[@trials 1_000] prop (actions : Action.t list) =
+      bisimulate
+      @@ fun when_to_start_next_effect ->
+      let handle =
+        Handle.create (module Spec) (fun (local_ graph) ->
+          component ~when_to_start_next_effect graph)
+      in
+      List.iter actions ~f:(fun action -> Action.perform ~handle action);
+      Handle.do_actions
+        handle
+        [ Set_effect_time None
+        ; Set_every (Time_ns.Span.of_sec 1.0)
+        ; Set_active_status true
+        ];
+      let ( (* Flush any remaining ticks/effects. *) ) =
+        Fn.apply_n_times
+          ~n:10
+          (fun () ->
+            Handle.advance_clock_by handle (Time_ns.Span.of_sec 10.0);
+            Handle.recompute_view handle;
+            Handle.recompute_view handle)
+          ()
+      in
+      let%tydi { count = initial_count; _ } = Handle.last_result handle in
+      let show () =
+        Handle.recompute_view handle;
+        Handle.recompute_view handle;
+        let%tydi { count; _ } = Handle.last_result handle in
+        print_s [%sexp (count - initial_count : int)]
+      in
+      let advance_and_show () =
+        Handle.advance_clock_by handle (Time_ns.Span.of_sec 1.0);
+        show ()
+      in
+      show ();
+      (* There have been 0 ticks since the last tick! *)
+      [%expect {| 0 |}];
+      (* Clock should continue to tick! - is not broken! *)
+      advance_and_show ();
+      [%expect {| 1 |}];
+      advance_and_show ();
+      [%expect {| 2 |}];
+      advance_and_show ();
+      [%expect {| 3 |}];
+      advance_and_show ();
+      [%expect {| 4 |}];
+      advance_and_show ();
+      [%expect {| 5 |}];
+      advance_and_show ();
+      [%expect {| 6 |}];
+      ()
+        [@@remember_failures]
     in
-    List.iter actions ~f:(fun action -> Action.perform ~handle action);
-    Handle.do_actions
-      handle
-      [ Set_effect_time None
-      ; Set_every (Time_ns.Span.of_sec 1.0)
-      ; Set_active_status true
-      ];
-    let ( (* Flush any remaining ticks/effects. *) ) =
-      Fn.apply_n_times
-        ~n:10
-        (fun () ->
-          Handle.advance_clock_by handle (Time_ns.Span.of_sec 10.0);
-          Handle.recompute_view handle;
-          Handle.recompute_view handle)
-        ()
-    in
-    let%tydi { count = initial_count; _ } = Handle.last_result handle in
-    let show () =
-      Handle.recompute_view handle;
-      Handle.recompute_view handle;
-      let%tydi { count; _ } = Handle.last_result handle in
-      print_s [%sexp (count - initial_count : int)]
-    in
-    let advance_and_show () =
-      Handle.advance_clock_by handle (Time_ns.Span.of_sec 1.0);
-      show ()
-    in
-    show ();
-    (* There have been 0 ticks since the last tick! *)
-    [%expect {| 0 |}];
-    (* Clock should continue to tick! - is not broken! *)
-    advance_and_show ();
-    [%expect {| 1 |}];
-    advance_and_show ();
-    [%expect {| 2 |}];
-    advance_and_show ();
-    [%expect {| 3 |}];
-    advance_and_show ();
-    [%expect {| 4 |}];
-    advance_and_show ();
-    [%expect {| 5 |}];
-    advance_and_show ();
-    [%expect {| 6 |}];
     ()
   ;;
 end

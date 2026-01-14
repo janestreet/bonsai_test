@@ -2711,6 +2711,7 @@ let%expect_test "on_display for updating a state (using on_change)" =
   in
   let component input =
     Bonsai.Edge.on_change'
+      ~trigger:`After_display
       ~sexp_of_model:[%sexp_of: Int.t]
       ~equal:[%equal: Int.t]
       ~callback
@@ -4784,6 +4785,7 @@ let chain_computation =
   in
   let%sub () =
     Bonsai.Edge.on_change
+      ~trigger:`After_display
       ~sexp_of_model:[%sexp_of: String.t]
       ~equal:[%equal: String.t]
       a
@@ -4791,6 +4793,7 @@ let chain_computation =
   in
   let%sub () =
     Bonsai.Edge.on_change
+      ~trigger:`After_display
       ~sexp_of_model:[%sexp_of: String.t]
       ~equal:[%equal: String.t]
       b
@@ -4798,6 +4801,7 @@ let chain_computation =
   in
   let%sub () =
     Bonsai.Edge.on_change
+      ~trigger:`After_display
       ~sexp_of_model:[%sexp_of: String.t]
       ~equal:[%equal: String.t]
       c
@@ -4846,6 +4850,7 @@ let%expect_test "infinite chain!" =
     in
     let%sub () =
       Bonsai.Edge.on_change
+        ~trigger:`After_display
         ~sexp_of_model:[%sexp_of: Int.t]
         ~equal:[%equal: Int.t]
         state
@@ -5419,6 +5424,7 @@ let%expect_test "portal" =
     Bonsai_extra.with_inject_fixed_point (fun inject ->
       let%sub () =
         Bonsai.Edge.on_change
+          ~trigger:`After_display
           ~sexp_of_model:[%sexp_of: Sexp.t]
           ~equal:[%equal: Sexp.t]
           (Bonsai.Var.value var)

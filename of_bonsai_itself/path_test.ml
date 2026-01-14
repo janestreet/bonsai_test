@@ -97,44 +97,47 @@ let compare_false = ref 0
 let compare_true_empty_list = ref 0
 let compare_false_empty_list = ref 0
 
-let%quick_test ("Bisimulating run length encoding path id comparison and slow but \
-                 simpler comparison" [@remember_failures])
+let%expect_test "Bisimulating run length encoding path id comparison and slow but \
+                 simpler comparison"
   =
-  fun ((a, b) : simple_path * simple_path) ->
-  incr iterations;
-  let int_id = Type_equal.Id.create ~name:"int" [%sexp_of: int] in
-  let path_a, path_b =
-    Tuple2.map (a, b) ~f:(fun elements ->
-      List.fold elements ~init:Bonsai.Private.Path.empty ~f:(fun path element ->
-        let element =
-          match element with
-          | `Subst_into_invert_lifecycles ->
-            Bonsai.Private.Path.Elem.Subst_into_invert_lifecycles
-          | `Subst_from -> Subst_from
-          | `Subst_into -> Subst_into
-          | `Assoc i -> Assoc (T { key = i; id = int_id; compare = [%compare: int] })
-          | `Switch i -> Switch i
-        in
-        Bonsai.Private.Path.append path element))
+  let%quick_test prop ((a, b) : simple_path * simple_path) =
+    incr iterations;
+    let int_id = Type_equal.Id.create ~name:"int" [%sexp_of: int] in
+    let path_a, path_b =
+      Tuple2.map (a, b) ~f:(fun elements ->
+        List.fold elements ~init:Bonsai.Private.Path.empty ~f:(fun path element ->
+          let element =
+            match element with
+            | `Subst_into_invert_lifecycles ->
+              Bonsai.Private.Path.Elem.Subst_into_invert_lifecycles
+            | `Subst_from -> Subst_from
+            | `Subst_into -> Subst_into
+            | `Assoc i -> Assoc (T { key = i; id = int_id; compare = [%compare: int] })
+            | `Switch i -> Switch i
+          in
+          Bonsai.Private.Path.append path element))
+    in
+    let correct_result =
+      Bonsai.Private.Path.For_testing.slow_but_correct_compare_for_bisimulation
+        path_a
+        path_b
+    in
+    let fast_result = Bonsai.Private.Path.compare path_a path_b in
+    if correct_result = 0
+    then (
+      incr compare_true;
+      match a, b with
+      | [], [] -> incr compare_true_empty_list
+      | _ -> ())
+    else (
+      incr compare_false;
+      match a, b with
+      | [], _ | _, [] -> incr compare_false_empty_list
+      | _ -> ());
+    assert (correct_result = fast_result)
+      [@@remember_failures]
   in
-  let correct_result =
-    Bonsai.Private.Path.For_testing.slow_but_correct_compare_for_bisimulation
-      path_a
-      path_b
-  in
-  let fast_result = Bonsai.Private.Path.compare path_a path_b in
-  if correct_result = 0
-  then (
-    incr compare_true;
-    match a, b with
-    | [], [] -> incr compare_true_empty_list
-    | _ -> ())
-  else (
-    incr compare_false;
-    match a, b with
-    | [], _ | _, [] -> incr compare_false_empty_list
-    | _ -> ());
-  assert (correct_result = fast_result)
+  ()
 ;;
 
 let%expect_test ("distribution of quick_test samples" [@tags "no-js"]) =
@@ -155,34 +158,37 @@ let%expect_test ("distribution of quick_test samples" [@tags "no-js"]) =
     |}]
 ;;
 
-let%quick_test ("Bisimulating run length encoding path id comparison and slow but same \
-                 list" [@remember_failures])
+let%expect_test "Bisimulating run length encoding path id comparison and slow but same \
+                 list"
   =
-  fun (path : simple_path) ->
-  let int_id = Type_equal.Id.create ~name:"int" [%sexp_of: int] in
-  let path_a, path_b =
-    Tuple2.map (path, path) ~f:(fun path ->
-      (* Constructing the same path twice is silly, but it's so that the phys_equal
-         doesn't accidentally prevent the functions we want to compare from running... *)
-      List.fold path ~init:Bonsai.Private.Path.empty ~f:(fun path element ->
-        let element =
-          match element with
-          | `Subst_into_invert_lifecycles ->
-            Bonsai.Private.Path.Elem.Subst_into_invert_lifecycles
-          | `Subst_from -> Subst_from
-          | `Subst_into -> Subst_into
-          | `Assoc i -> Assoc (T { key = i; id = int_id; compare = [%compare: int] })
-          | `Switch i -> Switch i
-        in
-        Bonsai.Private.Path.append path element))
+  let%quick_test prop (path : simple_path) =
+    let int_id = Type_equal.Id.create ~name:"int" [%sexp_of: int] in
+    let path_a, path_b =
+      Tuple2.map (path, path) ~f:(fun path ->
+        (* Constructing the same path twice is silly, but it's so that the phys_equal
+           doesn't accidentally prevent the functions we want to compare from running... *)
+        List.fold path ~init:Bonsai.Private.Path.empty ~f:(fun path element ->
+          let element =
+            match element with
+            | `Subst_into_invert_lifecycles ->
+              Bonsai.Private.Path.Elem.Subst_into_invert_lifecycles
+            | `Subst_from -> Subst_from
+            | `Subst_into -> Subst_into
+            | `Assoc i -> Assoc (T { key = i; id = int_id; compare = [%compare: int] })
+            | `Switch i -> Switch i
+          in
+          Bonsai.Private.Path.append path element))
+    in
+    let correct_result =
+      Bonsai.Private.Path.For_testing.slow_but_correct_compare_for_bisimulation
+        path_a
+        path_b
+    in
+    let fast_result = Bonsai.Private.Path.compare path_a path_b in
+    assert (correct_result = fast_result)
+      [@@remember_failures]
   in
-  let correct_result =
-    Bonsai.Private.Path.For_testing.slow_but_correct_compare_for_bisimulation
-      path_a
-      path_b
-  in
-  let fast_result = Bonsai.Private.Path.compare path_a path_b in
-  assert (correct_result = fast_result)
+  ()
 ;;
 
 module%test [@name "paths compare as expected"] _ = struct
