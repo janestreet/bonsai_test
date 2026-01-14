@@ -206,8 +206,7 @@ let%expect_test "Switch/Lazy" =
   in
   Handle.print_actions handle;
   Handle.print_stabilizations handle;
-  (* In this case, we should go through the first switch branch and not hit the lazy
-     case *)
+  (* In this case, we should go through the first switch branch and not hit the lazy case *)
   Handle.do_actions handle [ () ];
   Handle.show handle;
   [%expect
@@ -217,8 +216,8 @@ let%expect_test "Switch/Lazy" =
     |}];
   Bonsai.Var.set lazy_branch_var true;
   Handle.recompute_view_until_stable handle;
-  (* And alternatively, in this case, we should go through the second branch and hit
-     the lazy case *)
+  (* And alternatively, in this case, we should go through the second branch and hit the
+     lazy case *)
   Handle.do_actions handle [ () ];
   Handle.show handle;
   [%expect
@@ -636,8 +635,8 @@ let%expect_test "state_machine1 that schedules an action which sets an upstream 
    Incremental's abstractions do so at their own risk. *)
 let%expect_test ("state_machine1 depending on Incr.Expert.Node.t that breaks abstraction \
                   doesn't stabilize when marked stale"
-  (* This test is disabled because breaking incremental's invariants will
-     cause incremental to flip out when you turn JSC_DEBUG on. *)
+  (* This test is disabled because breaking incremental's invariants will cause
+     incremental to flip out when you turn JSC_DEBUG on. *)
   [@tags "disabled"])
   =
   let counter = ref 0 in
@@ -727,8 +726,8 @@ let%expect_test ("state_machine1 depending on Incr.Expert.Node.t that breaks abs
 module%test [@name "pruning"] _ = struct
   let trigger_prune_with action =
     (* We do [2 * num_generations_for_pruning] because pruning only happens every
-         [num_generations_for_testing] and requires the path to not have received an action
-         for the last [num_generations_for_testing] stabilizations. *)
+       [num_generations_for_testing] and requires the path to not have received an action
+       for the last [num_generations_for_testing] stabilizations. *)
     List.init
       (2 * Bonsai.Private.Stabilization_tracker.For_testing.num_generations_for_pruning)
       ~f:(fun _ -> action)
@@ -768,7 +767,7 @@ module%test [@name "pruning"] _ = struct
     print_endline "After pruning:";
     Handle.print_stabilization_tracker_stats handle;
     (* Note: at this point, we have pruned the branch corresponding to the key [2] in the
-         assoc. We can still deliver actions to this path again without issues. *)
+       assoc. We can still deliver actions to this path again without issues. *)
     Handle.do_actions handle [ Entry 2 ];
     Handle.recompute_view_until_stable handle;
     print_endline "After pruning + action delivery:";
@@ -840,7 +839,7 @@ module%test [@name "pruning"] _ = struct
     print_endline "After pruning:";
     Handle.print_stabilization_tracker_stats handle;
     (* Note: at this point, we have pruned the branch corresponding to the key [2] in the
-         assoc. We can still deliver actions to this path again without issues. *)
+       assoc. We can still deliver actions to this path again without issues. *)
     Bonsai.Var.set input true;
     Handle.recompute_view_until_stable handle;
     Handle.do_actions handle [ () ];
@@ -978,8 +977,8 @@ module%test [@name "the optimization takes effect"] _ = struct
             ~_:(j : [ `Sm1 | `Wrap_inner | `Wrap_outer ])];
       Handle.do_actions handle [ i; j ];
       Handle.show handle);
-    (* Here, we expect a test to stabilize before its second action if and only if
-         the second action isn't [`Sm1]. *)
+    (* Here, we expect a test to stabilize before its second action if and only if the
+       second action isn't [`Sm1]. *)
     [%expect
       {|
       (Applying: Sm1 Sm1)
@@ -1075,8 +1074,8 @@ module%test [@name "interesting action delivery cases"] _ = struct
         component
     in
     (* We deliver an action to the true branch, and then switch to the false branch and
-         perform both a set and a copy in the same [do_actions]. The copy should require a
-         stabilization and correctly observe the set value. *)
+       perform both a set and a copy in the same [do_actions]. The copy should require a
+       stabilization and correctly observe the set value. *)
     Handle.show handle;
     [%expect {| 0 |}];
     Handle.do_actions handle [ `Copy ];
@@ -1127,8 +1126,8 @@ module%test [@name "interesting action delivery cases"] _ = struct
         component
     in
     (* We deliver an action to the 1-key, and then another one to the 2-key, with sets
-         prior to both. Both copies should notice the need for a stabilization to
-         correctly observe the set value. *)
+       prior to both. Both copies should notice the need for a stabilization to correctly
+       observe the set value. *)
     Handle.show handle;
     [%expect {| ((1 0) (2 0)) |}];
     Handle.do_actions handle [ `Set 2; `Copy 1; `Set 3; `Copy 2 ];
@@ -1178,8 +1177,8 @@ module%test [@name "interesting action delivery cases"] _ = struct
         component
     in
     (* We deliver an action to the 1-key, and then another one to the 2-key, with sets
-         prior to both. Both copies should notice the need for a stabilization to
-         correctly observe the set value. *)
+       prior to both. Both copies should notice the need for a stabilization to correctly
+       observe the set value. *)
     Handle.show handle;
     [%expect {| ((1 0) (2 0)) |}];
     Handle.do_actions handle [ `Set 2; `Copy 1 ];
@@ -1191,7 +1190,7 @@ module%test [@name "interesting action delivery cases"] _ = struct
   ;;
 
   (* This test case exercises the logic for a model reset outer action being followed by
-       model reset inner action within the same frame. *)
+     model reset inner action within the same frame. *)
   let%expect_test "a model reset containing a wrap" =
     let component =
       Bonsai.with_model_resetter
@@ -1244,8 +1243,8 @@ module%test [@name "interesting action delivery cases"] _ = struct
     Handle.do_actions handle [ `Set 10 ];
     Handle.show handle;
     [%expect {| 10 |}];
-    (* Resetting and copying in the same frame should copy the new value of 0, instead
-         of the old value of 10. *)
+    (* Resetting and copying in the same frame should copy the new value of 0, instead of
+       the old value of 10. *)
     Handle.do_actions handle [ `Reset; `Copy ];
     Handle.show handle;
     [%expect {| 0 |}]
@@ -1255,8 +1254,8 @@ module%test [@name "interesting action delivery cases"] _ = struct
                    they call inject_outer"
     =
     (* This test demonstrates that successive [Wrap_inner] actions don't require
-         stabiliztaion. The only way that [Wrap_inner] could influence its own inputs is
-         by calling the supplied [inject_outer] input, which is what this test does. *)
+       stabiliztaion. The only way that [Wrap_inner] could influence its own inputs is by
+       calling the supplied [inject_outer] input, which is what this test does. *)
     let component =
       Bonsai.wrap
         ~default_model:0
@@ -1317,14 +1316,14 @@ module%test [@name "interesting action delivery cases"] _ = struct
     Handle.print_actions handle;
     Handle.show handle;
     [%expect {| 0 |}];
-    (* Setting the model to 5 and then copying it in the same frame should cause the
-         model to (correctly) update to 5 *)
+    (* Setting the model to 5 and then copying it in the same frame should cause the model
+       to (correctly) update to 5 *)
     Handle.do_actions handle [ `Set 5; `Copy ];
     Handle.show handle;
     (* The actions below demonstrate why this action is safe in the first place: even
-         though we call the outer injection function from the body of the wrap, that
-         results in a [Wrap_outer] action being generated. We require stabilization
-         between [Wrap_inner] and [Wrap_outer] events, so the data is all up-to-date. *)
+       though we call the outer injection function from the body of the wrap, that results
+       in a [Wrap_outer] action being generated. We require stabilization between
+       [Wrap_inner] and [Wrap_outer] events, so the data is all up-to-date. *)
     [%expect
       {|
       skipped stabilization

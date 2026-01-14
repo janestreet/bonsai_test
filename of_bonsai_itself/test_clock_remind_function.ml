@@ -10,6 +10,7 @@ let run_effect_on_change_and_remind_every_span_if_true
   fun ~span ~condition effect graph ->
   let () =
     Bonsai.Edge.on_change'
+      ~trigger:`After_display
       ~equal:[%equal: bool]
       condition
       graph

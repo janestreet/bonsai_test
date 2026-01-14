@@ -14,9 +14,8 @@ module Graph_info = Bonsai.Private.Graph_info
 module Expect_test_config = struct
   include Expect_test_config
 
-  (* NOTE: Printing line numbers is brittle, so this solely
-     censor line numbers - we still keep + record filename locations
-     and things like that. *)
+  (* NOTE: Printing line numbers is brittle, so this solely censor line numbers - we still
+     keep + record filename locations and things like that. *)
   let sanitize = Expect_test_helpers_core.hide_positions_in_string
 end
 
@@ -27,8 +26,8 @@ let start_timer label =
 
 let stop_timer label = print_endline [%string "stop-%{label}"]
 
-(* Each test sets this ref to the location at which the test began, so that
-   test output can be made resilient to adding or remove lines above the test. *)
+(* Each test sets this ref to the location at which the test began, so that test output
+   can be made resilient to adding or remove lines above the test. *)
 let test_location_reference_point = ref [%here]
 let test_start here = test_location_reference_point := here
 let this_file = [%here].pos_fname
@@ -66,8 +65,9 @@ let print_graph_info (graph_info : Graph_info.t) =
        | Some { Source_code_position.pos_lnum; pos_cnum; pos_bol; pos_fname } ->
          let pos_lnum, pos_fname =
            if String.equal this_file pos_fname
-              (* NOTE: These tests are painful. Censoring these tests to have "THIS_FILE" makes these
-                 tests less brittle an noisy We do record line numbers, we just don't show them. *)
+              (* NOTE: These tests are painful. Censoring these tests to have "THIS_FILE"
+                 makes these tests less brittle an noisy We do record line numbers, we
+                 just don't show them. *)
            then pos_lnum, "this_file:"
            else pos_lnum, pos_fname ^ ":"
          in
@@ -122,8 +122,8 @@ let many_aliases () =
   let%sub a = opaque_const 1 in
   let%sub a = return a in
   let%sub a = return a in
-  (* Even with an extra subst in here to break up the chain, the optimization
-     still removes all the aliases. *)
+  (* Even with an extra subst in here to break up the chain, the optimization still
+     removes all the aliases. *)
   let%sub _ = opaque_const 1 in
   let%sub a = return a in
   let%sub a = return a in
@@ -169,8 +169,8 @@ let many_aliases_constant_folding () =
   let%sub a = Bonsai.const 5 in
   let%sub a = return a in
   let%sub a = return a in
-  (* Even with an extra subst in here to break up the chain, the optimization
-     still removes all the aliases. *)
+  (* Even with an extra subst in here to break up the chain, the optimization still
+     removes all the aliases. *)
   let%sub _ = Bonsai.const 6 in
   let%sub a = return a in
   let%sub a = return a in
@@ -1036,11 +1036,10 @@ let command =
              Writer.flushed writer)
          in
          let%bind () =
-           (* We have to special-case a bunch of code in order to force the
-              lazy component and extract the graph info to write it to a file.
-              The following block of code is a slightly modified copy of the
-              function above and also has a slightly modified
-              [write_computation_to_dot] inlined. *)
+           (* We have to special-case a bunch of code in order to force the lazy component
+              and extract the graph info to write it to a file. The following block of
+              code is a slightly modified copy of the function above and also has a
+              slightly modified [write_computation_to_dot] inlined. *)
            let name = "lazy_forced" in
            print_endline [%string "Processing %{name}"];
            let filename = [%string "%{name}.dot"] in

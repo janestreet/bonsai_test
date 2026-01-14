@@ -60,10 +60,9 @@ let%expect_test _ =
       | Homepage -> First (Second ())
       | Search_results -> Second ()
     in
-    (* Before, this test was preventing a bug from popping up again. However,
-       this test depended on [match_either], which has now been deleted. Thus,
-       we can't know whether this test would catch any regressions of the bug,
-       so it's just an ordinary test now *)
+    (* Before, this test was preventing a bug from popping up again. However, this test
+       depended on [match_either], which has now been deleted. Thus, we can't know whether
+       this test would catch any regressions of the bug, so it's just an ordinary test now *)
     let%sub body =
       match%sub as_eithers with
       | First (First _) -> Bonsai.const "1"

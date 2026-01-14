@@ -19,7 +19,8 @@ let graph_stats c =
     Bonsai_driver.create
       ~instrumentation:(Bonsai_driver.Instrumentation.default_for_test_handles ())
       (fun graph -> Bonsai.Private.perform graph c)
-        (* we explicitly optimize the computation ourselves inside of [print], so don't do anything here. *)
+        (* we explicitly optimize the computation ourselves inside of [print], so don't do
+           anything here. *)
       ~optimize:false
       ~time_source:(Ui_time_source.create ~start:Time_ns.epoch)
   in

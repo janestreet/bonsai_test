@@ -134,13 +134,13 @@ module%test Instant_effect_tests = struct
     show ();
     [%expect {| 2 |}];
     (* NOTE: If we change [every] when the clock was previously waiting we end up using
-     the previous time interval We wait for 1s instead of 2s. *)
+       the previous time interval We wait for 1s instead of 2s. *)
     Handle.do_actions handle [ Set_every (Time_ns.Span.of_sec 2.0) ];
     Handle.advance_clock_by handle (Time_ns.Span.of_sec 1.0);
     show ();
     [%expect {| 3 |}];
     (* The counter doesn't increase! We need to wait for another second to notice the
-     increase. *)
+       increase. *)
     Handle.advance_clock_by handle (Time_ns.Span.of_sec 1.0);
     show ();
     [%expect {| 3 |}];
@@ -153,12 +153,12 @@ module%test Instant_effect_tests = struct
   let%expect_test "Zeno's race" =
     (* https://en.wikipedia.org/wiki/Zeno%27s_paradoxes
 
-     The first "tick" will take 1s, the second "tick" will wait 0.5s, the third
-     will wait 0.25s and so on.
+       The first "tick" will take 1s, the second "tick" will wait 0.5s, the third will
+       wait 0.25s and so on.
 
-     How many times will the clock tick when it reaches 2s?
+       How many times will the clock tick when it reaches 2s?
 
-     This test will "clamp"/stop when it reaches 0s.
+       This test will "clamp"/stop when it reaches 0s.
     *)
     bisimulate
     @@ fun when_to_start_next_effect ->
@@ -209,7 +209,7 @@ module%test Instant_effect_tests = struct
     in
     (* Clock does not advance! *)
     Fn.apply_n_times ~n:100 try_to_advance ();
-    (* When every = zero|-1s, it behaves as if every = 1ns. *)
+    (*=When every = zero|-1s, it behaves as if every = 1ns. *)
     let show () =
       Handle.recompute_view handle;
       Handle.show handle
@@ -228,7 +228,7 @@ module%test Instant_effect_tests = struct
     Handle.advance_clock_by handle (Time_ns.Span.of_int63_ns Int63.one);
     show ();
     (* NOTE: One last tick due to [every] changing not taking effect in the current tick,
-     but only taking effect until the next tick. *)
+       but only taking effect until the next tick. *)
     [%expect {| 5 |}];
     Fn.apply_n_times
       ~n:100
@@ -318,12 +318,12 @@ module%test Effect_that_takes_time = struct
 end
 
 module%test Quickcheck = struct
-  (* NOTE: This quickcheck test show that the clock "continues" working 
-     after weird sequences of operation. The randomized operations are:
+  (* NOTE: This quickcheck test show that the clock "continues" working after weird
+     sequences of operation. The randomized operations are:
 
      1. Setting a random "every" + waiting "every"
      2. Activating/de-activating the clock
-     3. Waiting every. 
+     3. Waiting every.
      4. Computing/re-computing.
   *)
 
@@ -389,57 +389,60 @@ module%test Quickcheck = struct
     end
   end
 
-  let%quick_test (_ [@trials 1_000] [@remember_failures]) =
-    fun (actions : Action.t list) ->
-    bisimulate
-    @@ fun when_to_start_next_effect ->
-    let handle =
-      Handle.create (module Spec) (fun graph ->
-        component ~when_to_start_next_effect graph)
+  let%expect_test _ =
+    let%quick_test[@trials 1_000] prop (actions : Action.t list) =
+      bisimulate
+      @@ fun when_to_start_next_effect ->
+      let handle =
+        Handle.create (module Spec) (fun graph ->
+          component ~when_to_start_next_effect graph)
+      in
+      List.iter actions ~f:(fun action -> Action.perform ~handle action);
+      Handle.do_actions
+        handle
+        [ Set_effect_time None
+        ; Set_every (Time_ns.Span.of_sec 1.0)
+        ; Set_active_status true
+        ];
+      let ( (* Flush any remaining ticks/effects. *) ) =
+        Fn.apply_n_times
+          ~n:10
+          (fun () ->
+            Handle.advance_clock_by handle (Time_ns.Span.of_sec 10.0);
+            Handle.recompute_view handle;
+            Handle.recompute_view handle)
+          ()
+      in
+      let%tydi { count = initial_count; _ } = Handle.last_result handle in
+      let show () =
+        Handle.recompute_view handle;
+        Handle.recompute_view handle;
+        let%tydi { count; _ } = Handle.last_result handle in
+        print_s [%sexp (count - initial_count : int)]
+      in
+      let advance_and_show () =
+        Handle.advance_clock_by handle (Time_ns.Span.of_sec 1.0);
+        show ()
+      in
+      show ();
+      (* There have been 0 ticks since the last tick! *)
+      [%expect {| 0 |}];
+      (* Clock should continue to tick! - is not broken! *)
+      advance_and_show ();
+      [%expect {| 1 |}];
+      advance_and_show ();
+      [%expect {| 2 |}];
+      advance_and_show ();
+      [%expect {| 3 |}];
+      advance_and_show ();
+      [%expect {| 4 |}];
+      advance_and_show ();
+      [%expect {| 5 |}];
+      advance_and_show ();
+      [%expect {| 6 |}];
+      ()
+        [@@remember_failures]
     in
-    List.iter actions ~f:(fun action -> Action.perform ~handle action);
-    Handle.do_actions
-      handle
-      [ Set_effect_time None
-      ; Set_every (Time_ns.Span.of_sec 1.0)
-      ; Set_active_status true
-      ];
-    let ( (* Flush any remaining ticks/effects. *) ) =
-      Fn.apply_n_times
-        ~n:10
-        (fun () ->
-          Handle.advance_clock_by handle (Time_ns.Span.of_sec 10.0);
-          Handle.recompute_view handle;
-          Handle.recompute_view handle)
-        ()
-    in
-    let%tydi { count = initial_count; _ } = Handle.last_result handle in
-    let show () =
-      Handle.recompute_view handle;
-      Handle.recompute_view handle;
-      let%tydi { count; _ } = Handle.last_result handle in
-      print_s [%sexp (count - initial_count : int)]
-    in
-    let advance_and_show () =
-      Handle.advance_clock_by handle (Time_ns.Span.of_sec 1.0);
-      show ()
-    in
-    show ();
-    (* There have been 0 ticks since the last tick! *)
-    [%expect {| 0 |}];
-    (* Clock should continue to tick! - is not broken! *)
-    advance_and_show ();
-    [%expect {| 1 |}];
-    advance_and_show ();
-    [%expect {| 2 |}];
-    advance_and_show ();
-    [%expect {| 3 |}];
-    advance_and_show ();
-    [%expect {| 4 |}];
-    advance_and_show ();
-    [%expect {| 5 |}];
-    advance_and_show ();
-    [%expect {| 6 |}];
     ()
   ;;
 end
