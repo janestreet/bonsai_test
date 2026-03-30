@@ -101,12 +101,7 @@ let%expect_test "stateful computation" =
     {|
     ("with and without optimizations"
       (shapes (
-        (model
-         lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-        (action (
-          Leaf
-          lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
-        (input unit)))
+        (model state_machine-model) (action (Leaf state_machine)) (input unit)))
       (incr_graph (
         (nodes 11)
         (edges 14))))
@@ -122,15 +117,11 @@ module%test [@name "sub"] _ = struct
       {|
       ("with and without optimizations"
         (shapes (
-          (model (
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
+          (model (state_machine-model state_machine-model))
           (action (
             Sub
-            (Leaf
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
-            (Leaf
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+            (Leaf state_machine)
+            (Leaf state_machine)))
           (input (unit unit))))
         (incr_graph (
           (nodes 12)
@@ -146,12 +137,7 @@ module%test [@name "sub"] _ = struct
       {|
       ("with and without optimizations"
         (shapes (
-          (model
-           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-          (action (
-            Leaf
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
-          (input unit)))
+          (model state_machine-model) (action (Leaf state_machine)) (input unit)))
         (incr_graph (
           (nodes 11)
           (edges 14))))
@@ -166,12 +152,7 @@ module%test [@name "sub"] _ = struct
       {|
       ("with and without optimizations"
         (shapes (
-          (model
-           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-          (action (
-            Leaf
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
-          (input unit)))
+          (model state_machine-model) (action (Leaf state_machine)) (input unit)))
         (incr_graph (
           (nodes 10)
           (edges 13))))
@@ -218,12 +199,8 @@ module%test [@name "model_resetter"] _ = struct
       {|
       ("with and without optimizations"
         (shapes (
-          (model
-           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-          (action (
-            Model_reset (
-              Leaf
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+          (model state_machine-model)
+          (action (Model_reset (Leaf state_machine)))
           (input unit)))
         (incr_graph (
           (nodes 13)
@@ -262,14 +239,8 @@ module%test [@name "wrap"] _ = struct
       {|
       ("with and without optimizations"
         (shapes (
-          (model (
-            "outer model for wrap-model"
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
-          (action (
-            Wrap
-            (Leaf
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
-            "action id"))
+          (model ("outer model for wrap-model" state_machine-model))
+          (action (Wrap (Leaf state_machine) "action id"))
           (input (unit input))))
         (incr_graph (
           (nodes 12)
@@ -287,9 +258,7 @@ module%test [@name "assoc"] _ = struct
       {|
       ("without optimizations"
         (shapes (
-          (model unit)
-          (action (Assoc "key id" (Leaf Nothing.t)))
-          (input (optional unit))))
+          (model unit) (action (Assoc "key id" (Leaf Nothing.t))) (input unit)))
         (incr_graph (
           (nodes 14)
           (edges 19))))
@@ -310,13 +279,9 @@ module%test [@name "assoc"] _ = struct
       {|
       ("with and without optimizations"
         (shapes (
-          (model
-           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-          (action (
-            Assoc "key id" (
-              Leaf
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
-          (input (optional unit))))
+          (model state_machine-model)
+          (action (Assoc "key id" (Leaf state_machine)))
+          (input unit)))
         (incr_graph (
           (nodes 14)
           (edges 19))))
@@ -331,16 +296,12 @@ module%test [@name "assoc"] _ = struct
       {|
       ("with and without optimizations"
         (shapes (
-          (model
-           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-          (action (
-            Assoc "key id" (
-              Leaf
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
-          (input (optional input))))
+          (model state_machine_with_input-model)
+          (action (Assoc "key id" (Leaf state_machine_with_input)))
+          (input input)))
         (incr_graph (
-          (nodes 20)
-          (edges 33))))
+          (nodes 19)
+          (edges 31))))
       |}]
   ;;
 end
@@ -360,7 +321,7 @@ module%test [@name "assoc_on"] _ = struct
         (shapes (
           (model unit)
           (action (Assoc "io key id" "model key id" (Leaf Nothing.t)))
-          (input (optional unit))))
+          (input unit)))
         (incr_graph (
           (nodes 12)
           (edges 16))))
@@ -385,13 +346,9 @@ module%test [@name "assoc_on"] _ = struct
       {|
       ("with and without optimizations"
         (shapes (
-          (model
-           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-          (action (
-            Assoc "io key id" "model key id" (
-              Leaf
-              lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
-          (input (optional unit))))
+          (model state_machine-model)
+          (action (Assoc "io key id" "model key id" (Leaf state_machine)))
+          (input unit)))
         (incr_graph (
           (nodes 12)
           (edges 16))))
@@ -413,7 +370,7 @@ module%test [@name "switch"] _ = struct
             (0 unit)
             (1 unit)))
           (action Switch)
-          (input (optional "enum input"))))
+          (input  "enum input")))
         (incr_graph (
           (nodes 17)
           (edges 26))))
@@ -430,12 +387,10 @@ module%test [@name "switch"] _ = struct
       ("with and without optimizations"
         (shapes (
           (model (
-            (0
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (1
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+            (0 state_machine-model)
+            (1 state_machine-model)))
           (action Switch)
-          (input (optional "enum input"))))
+          (input  "enum input")))
         (incr_graph (
           (nodes 19)
           (edges 29))))
@@ -452,12 +407,10 @@ module%test [@name "switch"] _ = struct
       ("with and without optimizations"
         (shapes (
           (model (
-            (0
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (1
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+            (0 state_machine_with_input-model)
+            (1 state_machine_with_input-model)))
           (action Switch)
-          (input (optional "enum input"))))
+          (input  "enum input")))
         (incr_graph (
           (nodes 22)
           (edges 35))))
@@ -474,12 +427,10 @@ module%test [@name "switch"] _ = struct
       ("with and without optimizations"
         (shapes (
           (model (
-            (0
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (1
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+            (0 state_machine-model)
+            (1 state_machine_with_input-model)))
           (action Switch)
-          (input (optional "enum input"))))
+          (input  "enum input")))
         (incr_graph (
           (nodes 22)
           (edges 35))))
@@ -501,7 +452,7 @@ module%test [@name "optimizable switch"] _ = struct
             (0 unit)
             (1 unit)))
           (action Switch)
-          (input (optional "enum input"))))
+          (input  "enum input")))
         (incr_graph (
           (nodes 17)
           (edges 27))))
@@ -524,24 +475,17 @@ module%test [@name "optimizable switch"] _ = struct
       ("without optimizations"
         (shapes (
           (model (
-            (0
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (1
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+            (0 state_machine-model)
+            (1 state_machine-model)))
           (action Switch)
-          (input (optional "enum input"))))
+          (input  "enum input")))
         (incr_graph (
           (nodes 19)
           (edges 30))))
 
       ("with optimizations"
         (shapes (
-          (model
-           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-          (action (
-            Leaf
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
-          (input unit)))
+          (model state_machine-model) (action (Leaf state_machine)) (input unit)))
         (incr_graph (
           (nodes 11)
           (edges 14))))
@@ -558,23 +502,18 @@ module%test [@name "optimizable switch"] _ = struct
       ("without optimizations"
         (shapes (
           (model (
-            (0
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (1
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+            (0 state_machine_with_input-model)
+            (1 state_machine_with_input-model)))
           (action Switch)
-          (input (optional "enum input"))))
+          (input  "enum input")))
         (incr_graph (
           (nodes 22)
           (edges 36))))
 
       ("with optimizations"
         (shapes (
-          (model
-           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-          (action (
-            Leaf
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
+          (model state_machine_with_input-model)
+          (action (Leaf state_machine_with_input))
           (input input)))
         (incr_graph (
           (nodes 11)
@@ -592,23 +531,18 @@ module%test [@name "optimizable switch"] _ = struct
       ("without optimizations"
         (shapes (
           (model (
-            (0
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (1
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+            (0 state_machine-model)
+            (1 state_machine_with_input-model)))
           (action Switch)
-          (input (optional "enum input"))))
+          (input  "enum input")))
         (incr_graph (
           (nodes 22)
           (edges 36))))
 
       ("with optimizations"
         (shapes (
-          (model
-           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-          (action (
-            Leaf
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
+          (model state_machine_with_input-model)
+          (action (Leaf state_machine_with_input))
           (input input)))
         (incr_graph (
           (nodes 11)
@@ -626,24 +560,17 @@ module%test [@name "optimizable switch"] _ = struct
       ("without optimizations"
         (shapes (
           (model (
-            (0
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-            (1
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)))
+            (0 state_machine_with_input-model)
+            (1 state_machine-model)))
           (action Switch)
-          (input (optional "enum input"))))
+          (input  "enum input")))
         (incr_graph (
           (nodes 22)
           (edges 37))))
 
       ("with optimizations"
         (shapes (
-          (model
-           lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model)
-          (action (
-            Leaf
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml))
-          (input unit)))
+          (model state_machine-model) (action (Leaf state_machine)) (input unit)))
         (incr_graph (
           (nodes 11)
           (edges 14))))
@@ -660,15 +587,11 @@ module%test [@name "action grid"] _ = struct
       {|
       ("with and without optimizations"
         (shapes (
-          (model (
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
+          (model (state_machine_with_input-model state_machine_with_input-model))
           (action (
             Sub
-            (Leaf
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
-            (Leaf
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+            (Leaf state_machine_with_input)
+            (Leaf state_machine_with_input)))
           (input (input input))))
         (incr_graph (
           (nodes 13)
@@ -684,15 +607,11 @@ module%test [@name "action grid"] _ = struct
       {|
       ("with and without optimizations"
         (shapes (
-          (model (
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
+          (model (state_machine-model state_machine-model))
           (action (
             Sub
-            (Leaf
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
-            (Leaf
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+            (Leaf state_machine)
+            (Leaf state_machine)))
           (input (unit unit))))
         (incr_graph (
           (nodes 12)
@@ -708,15 +627,11 @@ module%test [@name "action grid"] _ = struct
       {|
       ("with and without optimizations"
         (shapes (
-          (model (
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
+          (model (state_machine_with_input-model state_machine-model))
           (action (
             Sub
-            (Leaf
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
-            (Leaf
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+            (Leaf state_machine_with_input)
+            (Leaf state_machine)))
           (input (input unit))))
         (incr_graph (
           (nodes 13)
@@ -732,15 +647,11 @@ module%test [@name "action grid"] _ = struct
       {|
       ("with and without optimizations"
         (shapes (
-          (model (
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model
-            lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml-model))
+          (model (state_machine-model state_machine_with_input-model))
           (action (
             Sub
-            (Leaf
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)
-            (Leaf
-             lib/bonsai/test/of_bonsai_itself/test_model_action_and_input_shapes.ml)))
+            (Leaf state_machine)
+            (Leaf state_machine_with_input)))
           (input (unit input))))
         (incr_graph (
           (nodes 13)

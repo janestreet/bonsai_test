@@ -36,7 +36,13 @@ module Startup : sig
     -> Bonsai.Private.Skeleton.Counts.t * Incr_report.t
 
   val print_many
-    :  (string, Bonsai.Private.Skeleton.Counts.t * Incr_report.t) Base.List.Assoc.t
+    :  ?print_max_height:bool
+    -> ?print_node_count:bool
+    -> ?print_max_node_id:bool
+    -> ?print_num_created:bool
+    -> ?print_num_recomputed:bool
+    -> ?print_num_invalidated:bool
+    -> (string, Bonsai.Private.Skeleton.Counts.t * Incr_report.t) Base.List.Assoc.t
     -> unit
 
   val run_and_print_compare
