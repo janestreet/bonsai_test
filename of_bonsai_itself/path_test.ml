@@ -41,8 +41,8 @@ let assert_path_unique_id_is_alpha path =
 ;;
 
 let%test_unit "all the values are alpha" =
-  let string_id = Type_equal.Id.create ~name:"string" [%sexp_of: string] in
-  let keyed = Path.Elem.keyed ~compare:String.compare string_id |> unstage in
+  let string_id = Bonsai.Private.Var_id.create () in
+  let keyed = Path.Elem.keyed ~comparator:(module String) string_id |> unstage in
   Quickcheck.test
     String.quickcheck_generator
     ~sexp_of:[%sexp_of: string]
@@ -52,8 +52,8 @@ let%test_unit "all the values are alpha" =
 ;;
 
 let%test_unit "larger groupings of paths behave" =
-  let string_id = Type_equal.Id.create ~name:"string" [%sexp_of: string] in
-  let keyed = Path.Elem.keyed ~compare:String.compare string_id |> unstage in
+  let string_id = Bonsai.Private.Var_id.create () in
+  let keyed = Path.Elem.keyed ~comparator:(module String) string_id |> unstage in
   let module P = struct
     (* Make a dumb version of this module so that we can derive quickcheck for it. *)
     type t =
@@ -102,7 +102,7 @@ let%expect_test "Bisimulating run length encoding path id comparison and slow bu
   =
   let%quick_test prop ((a, b) : simple_path * simple_path) =
     incr iterations;
-    let int_id = Type_equal.Id.create ~name:"int" [%sexp_of: int] in
+    let int_id = Bonsai.Private.Var_id.create () in
     let path_a, path_b =
       Tuple2.map (a, b) ~f:(fun elements ->
         List.fold elements ~init:Bonsai.Private.Path.empty ~f:(fun path element ->
@@ -112,7 +112,7 @@ let%expect_test "Bisimulating run length encoding path id comparison and slow bu
               Bonsai.Private.Path.Elem.Subst_into_invert_lifecycles
             | `Subst_from -> Subst_from
             | `Subst_into -> Subst_into
-            | `Assoc i -> Assoc (T { key = i; id = int_id; compare = [%compare: int] })
+            | `Assoc i -> Assoc (T { key = i; id = int_id; comparator = (module Int) })
             | `Switch i -> Switch i
           in
           Bonsai.Private.Path.append path element))
@@ -162,7 +162,7 @@ let%expect_test "Bisimulating run length encoding path id comparison and slow bu
                  list"
   =
   let%quick_test prop (path : simple_path) =
-    let int_id = Type_equal.Id.create ~name:"int" [%sexp_of: int] in
+    let int_id = Bonsai.Private.Var_id.create () in
     let path_a, path_b =
       Tuple2.map (path, path) ~f:(fun path ->
         (* Constructing the same path twice is silly, but it's so that the phys_equal
@@ -174,7 +174,7 @@ let%expect_test "Bisimulating run length encoding path id comparison and slow bu
               Bonsai.Private.Path.Elem.Subst_into_invert_lifecycles
             | `Subst_from -> Subst_from
             | `Subst_into -> Subst_into
-            | `Assoc i -> Assoc (T { key = i; id = int_id; compare = [%compare: int] })
+            | `Assoc i -> Assoc (T { key = i; id = int_id; comparator = (module Int) })
             | `Switch i -> Switch i
           in
           Bonsai.Private.Path.append path element))

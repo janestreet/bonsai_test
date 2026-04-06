@@ -152,7 +152,15 @@ module Startup = struct
     bonsai_node_counts, incr_report
   ;;
 
-  let print_many reports =
+  let print_many
+    ?(print_max_height = true)
+    ?(print_node_count = true)
+    ?(print_max_node_id = true)
+    ?(print_num_created = true)
+    ?(print_num_recomputed = true)
+    ?(print_num_invalidated = true)
+    reports
+    =
     print_endline "======= Startup Incr Node Stats =======";
     Expectable.print_alist
       (fun ( _
@@ -164,14 +172,16 @@ module Startup = struct
              ; nodes_invalidated
              ; _
              } ) ->
-        [%sexp
-          { max_height : int
-          ; node_count : int
-          ; max_node_id : int
-          ; nodes_created : int
-          ; nodes_recomputed : int
-          ; nodes_invalidated : int
-          }])
+        let field_if_flag flag name value = if flag then [ name, value ] else [] in
+        let fields =
+          field_if_flag print_max_height "max_height" max_height
+          @ field_if_flag print_node_count "node_count" node_count
+          @ field_if_flag print_max_node_id "max_node_id" max_node_id
+          @ field_if_flag print_num_created "nodes_created" nodes_created
+          @ field_if_flag print_num_recomputed "nodes_recomputed" nodes_recomputed
+          @ field_if_flag print_num_invalidated "nodes_invalidated" nodes_invalidated
+        in
+        [%sexp (fields : (string * int) list)])
       reports;
     print_endline "======= Startup Incr Annotated Node Counts =======";
     List.Assoc.map reports ~f:(fun (_, { annotated_counts_diff; _ }) ->
