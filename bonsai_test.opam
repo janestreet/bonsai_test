@@ -19,6 +19,7 @@ depends: [
   "bonsai_concrete"
   "core"
   "core_unix"
+  "expect_test_helpers_base"
   "expect_test_helpers_core"
   "expectable"
   "incr_map"
@@ -33,7 +34,7 @@ depends: [
   "dune"                     {>= "3.17.0"}
   "re"                       {>= "1.8.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
 synopsis: "A library for testing Bonsai state machines."
 description: "
 Bonsai is a library for building composable state machines. This libary
