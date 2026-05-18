@@ -10994,6 +10994,27 @@ let%expect_test "Bonsai.all does not reorder inputs" =
   done
 ;;
 
+let%expect_test "Bonsai.all correctness for lengths 1 through 100" =
+  for n = 1 to 100 do
+    let vars = List.init n ~f:(fun i -> Bonsai.Expert.Var.create (i + 1)) in
+    let values = List.map vars ~f:Bonsai.Expert.Var.value in
+    let component _graph = Bonsai.all values in
+    let handle = Handle.create Result_spec.invisible component in
+    Handle.recompute_view handle;
+    let result = Handle.last_result handle in
+    assert (List.equal Int.equal result (List.init n ~f:(fun i -> i + 1)));
+    Bonsai.Expert.Var.set (List.last_exn vars) 999;
+    Handle.recompute_view handle;
+    let result = Handle.last_result handle in
+    assert (
+      List.equal
+        Int.equal
+        result
+        (List.init n ~f:(fun i -> if i = n - 1 then 999 else i + 1)))
+  done;
+  [%expect {| |}]
+;;
+
 module%test [@name "computational shape"] _ = struct
   (* This module tests internal details of Bonsai, and the results are sensitive to
      implementation changes. *)
