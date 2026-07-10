@@ -32,9 +32,12 @@ depends: [
   "ppx_quick_test"
   "virtual_dom"
   "dune"                     {>= "3.17.0"}
-  "re"                       {= "1.14.0+ox"}
+  "re"                       {>= "1.8.0"}
 ]
 available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "A library for testing Bonsai state machines."
 description: "
 Bonsai is a library for building composable state machines. This libary
